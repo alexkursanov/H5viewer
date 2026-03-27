@@ -450,7 +450,7 @@ class MainWindow(QMainWindow):
     def show_documentation(self) -> None:
         import os
         base_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
-        doc_path = os.path.join(base_dir, 'docs', 'manual.md')
+        doc_path = os.path.join(base_dir, 'docs', 'manual.html')
         if os.path.exists(doc_path):
             from PyQt6.QtGui import QDesktopServices
             from PyQt6.QtCore import QUrl
