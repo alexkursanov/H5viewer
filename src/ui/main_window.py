@@ -9,6 +9,7 @@ from PyQt6.QtCore import Qt, pyqtSignal, QTimer
 from PyQt6.QtGui import QAction, QIcon
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
+from matplotlib.backends.backend_qt import NavigationToolbar2QT as NavigationToolbar
 from matplotlib.figure import Figure
 import numpy as np
 import os
@@ -322,6 +323,8 @@ class MainWindow(QMainWindow):
         splitter = QSplitter(Qt.Orientation.Vertical)
         
         self.all_cycles_canvas = MatplotlibCanvas(widget)
+        self.all_cycles_toolbar = NavigationToolbar(self.all_cycles_canvas, widget)
+        splitter.addWidget(self.all_cycles_toolbar)
         splitter.addWidget(self.all_cycles_canvas)
         
         sliders_widget = QWidget()
@@ -391,6 +394,8 @@ class MainWindow(QMainWindow):
         layout.addLayout(selection_btns)
         
         self.last_cycle_canvas = MatplotlibCanvas(widget)
+        self.last_cycle_toolbar = NavigationToolbar(self.last_cycle_canvas, widget)
+        layout.addWidget(self.last_cycle_toolbar)
         layout.addWidget(self.last_cycle_canvas)
         
         btn_layout = QHBoxLayout()
