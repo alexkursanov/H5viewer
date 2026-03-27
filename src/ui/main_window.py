@@ -10,7 +10,11 @@ from PyQt6.QtGui import QAction
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qt import NavigationToolbar2QT as NavigationToolbar
 from matplotlib.figure import Figure
+import matplotlib.pyplot as plt
 import numpy as np
+import logging
+
+logger = logging.getLogger(__name__)
 
 from ..core.h5_reader import H5Reader, H5File
 
@@ -23,7 +27,7 @@ class MatplotlibCanvas(FigureCanvas):
         self.setParent(parent)
 
 
-from typing import Optional
+from typing import Optional, List, Dict, Any
 
 class MainWindow(QMainWindow):
     def __init__(self):
@@ -435,15 +439,15 @@ class MainWindow(QMainWindow):
         self.setStatusBar(self.status_bar)
         self.status_bar.showMessage('Ready')
     
-    def open_file(self):
+    def open_file(self) -> None:
         filepath, _ = QFileDialog.getOpenFileName(
             self, 'Open H5 File', '', 'H5 Files (*.h5 *.hdf5)'
         )
-        
+
         if filepath:
             self.load_file(filepath)
-    
-    def load_file(self, filepath):
+
+    def load_file(self, filepath: str) -> None:
         try:
             h5file = self.h5_reader.open_file(filepath)
             self.files.append(h5file)
@@ -812,9 +816,9 @@ class MainWindow(QMainWindow):
                 values['APD_20 (ms)'] = APD20
                 values['APD_50 (ms)'] = APD50
                 values['APD_90 (ms)'] = APD90
-        except:
-            pass
-        
+        except Exception as e:
+            logger.warning(f"Failed to calculate V characteristics: {e}")
+
         try:
             vars_l = self.h5_reader.read_dataset_slice('variables', 'l_1', t_start, int(cycle) + 1) if cycle else None
             if vars_l is not None:
@@ -827,9 +831,9 @@ class MainWindow(QMainWindow):
                 values['l1_syst (mkm)'] = l1_syst
                 values['l1_diff (mkm)'] = l1_diff
                 values['l1_frac (%)'] = l1_frac
-        except:
-            pass
-        
+        except Exception as e:
+            logger.warning(f"Failed to calculate l_1 characteristics: {e}")
+
         try:
             vars_f = self.h5_reader.read_dataset_slice('forces', 'F_XSE', t_start, int(cycle) + 1) if cycle else None
             if vars_f is not None:
@@ -847,9 +851,9 @@ class MainWindow(QMainWindow):
                 values['DF_max(norm) (1/ms)'] = 0
                 values['DF_min (AFU/ms)'] = 0
                 values['DF_min(norm) (1/ms)'] = 0
-        except:
-            pass
-        
+        except Exception as e:
+            logger.warning(f"Failed to calculate FXSE characteristics: {e}")
+
         try:
             vars_ca = self.h5_reader.read_dataset_slice('variables', 'Ca_i', t_start, int(cycle) + 1) if cycle else None
             if vars_ca is not None:
@@ -878,9 +882,9 @@ class MainWindow(QMainWindow):
                 values['Cai_D50 (ms)'] = CaD50
                 values['Cai_D70 (ms)'] = CaD70
                 values['Cai_D90 (ms)'] = CaD90
-        except:
-            pass
-        
+        except Exception as e:
+            logger.warning(f"Failed to calculate Cai characteristics: {e}")
+
         self.dep_files.append(fname)
         self.dep_data[fname] = values
         
@@ -1052,23 +1056,26 @@ class MainWindow(QMainWindow):
                     values['Int{i_relSR} (mM)'] = calc_integral(irel, 1)
                     values['Int{i_relcyt} (mM)'] = calc_integral(irel, VjSR / Vc)
                     values['Int{i_relSS} (mM)'] = calc_integral(irel, VjSR / Vss)
-            except:
+            except Exception as e:
+                logger.warning(f"Failed to calculate i_rel integrals: {e}")
                 values['Int{i_relSR} (mM)'] = 0
                 values['Int{i_relcyt} (mM)'] = 0
                 values['Int{i_relSS} (mM)'] = 0
-            
+
             try:
                 ileak = self.h5_reader.read_dataset_slice('currents', 'i_leak', t_start, int(cycle) + 1) if cycle else None
                 values['Int{i_leak} (mM)'] = calc_integral(ileak, 1) if ileak is not None else 0
-            except:
+            except Exception as e:
+                logger.warning(f"Failed to calculate i_leak integral: {e}")
                 values['Int{i_leak} (mM)'] = 0
-            
+
             try:
                 iup = self.h5_reader.read_dataset_slice('currents', 'i_up', t_start, int(cycle) + 1) if cycle else None
                 values['Int{i_up} (mM)'] = calc_integral(iup, 1) if iup is not None else 0
-            except:
+            except Exception as e:
+                logger.warning(f"Failed to calculate i_up integral: {e}")
                 values['Int{i_up} (mM)'] = 0
-            
+
             try:
                 ixfer = self.h5_reader.read_dataset_slice('currents', 'i_xfer', t_start, int(cycle) + 1) if cycle else None
                 if ixfer is not None:
@@ -1077,22 +1084,25 @@ class MainWindow(QMainWindow):
                 else:
                     values['Int{i_xfercyt} (mM)'] = 0
                     values['Int{i_xferSS} (mM)'] = 0
-            except:
+            except Exception as e:
+                logger.warning(f"Failed to calculate i_xfer integrals: {e}")
                 values['Int{i_xfercyt} (mM)'] = 0
                 values['Int{i_xferSS} (mM)'] = 0
-            
+
             try:
                 ibCa = self.h5_reader.read_dataset_slice('currents', 'i_b_Ca', t_start, int(cycle) + 1) if cycle else None
                 values['Int{i_bCa} (mM)'] = calc_integral(ibCa, CC / (2 * Vc * FF)) if ibCa is not None else 0
-            except:
+            except Exception as e:
+                logger.warning(f"Failed to calculate i_b_Ca integral: {e}")
                 values['Int{i_bCa} (mM)'] = 0
-            
+
             try:
                 ipCa = self.h5_reader.read_dataset_slice('currents', 'i_p_Ca', t_start, int(cycle) + 1) if cycle else None
                 values['Int{i_pCa} (mM)'] = calc_integral(ipCa, CC / (2 * Vc * FF)) if ipCa is not None else 0
-            except:
+            except Exception as e:
+                logger.warning(f"Failed to calculate i_p_Ca integral: {e}")
                 values['Int{i_pCa} (mM)'] = 0
-            
+
             try:
                 iNaCa = self.h5_reader.read_dataset_slice('currents', 'i_NaCa', t_start, int(cycle) + 1) if cycle else None
                 if iNaCa is not None:
@@ -1105,11 +1115,12 @@ class MainWindow(QMainWindow):
                     values['Int{i_NaCain} (mM)'] = 0
                     values['Int{i_NaCaout} (mM)'] = 0
                     values['Int{i_NaCatotal} (mM)'] = 0
-            except:
+            except Exception as e:
+                logger.warning(f"Failed to calculate i_NaCa integrals: {e}")
                 values['Int{i_NaCain} (mM)'] = 0
                 values['Int{i_NaCaout} (mM)'] = 0
                 values['Int{i_NaCatotal} (mM)'] = 0
-            
+
             try:
                 iCaL = self.h5_reader.read_dataset_slice('currents', 'i_CaL', t_start, int(cycle) + 1) if cycle else None
                 if iCaL is not None:
@@ -1118,7 +1129,8 @@ class MainWindow(QMainWindow):
                 else:
                     values['Int{i_CaLcyt} (mM)'] = 0
                     values['Int{i_CaLSS} (mM)'] = 0
-            except:
+            except Exception as e:
+                logger.warning(f"Failed to calculate i_CaL integrals: {e}")
                 values['Int{i_CaLcyt} (mM)'] = 0
                 values['Int{i_CaLSS} (mM)'] = 0
             
@@ -1286,8 +1298,8 @@ class MainWindow(QMainWindow):
                         d = self.h5_reader.read_dataset(group, dataset)
                         if d is not None and len(d) == len(time):
                             data[f'{group}/{dataset}'] = d
-                    except:
-                        pass
+                    except Exception as e:
+                        logger.warning(f"Failed to read {group}/{dataset}: {e}")
         
         df = pd.DataFrame(data)
         df.to_excel(filepath, index=False)
@@ -1329,9 +1341,9 @@ class MainWindow(QMainWindow):
                         d = self.h5_reader.read_dataset(group, dataset)
                         if d is not None and len(d) >= cycle_len:
                             data[f'{group}/{dataset}'] = d[:cycle_len]
-                    except:
-                        pass
-        
+                    except Exception as e:
+                        logger.warning(f"Failed to read {group}/{dataset}: {e}")
+
         df = pd.DataFrame(data)
         df.to_excel(filepath, index=False)
         self.status_bar.showMessage(f'Saved first cycle to: {filepath}')
@@ -1376,38 +1388,38 @@ class MainWindow(QMainWindow):
                         d = self.h5_reader.read_dataset(group, dataset)
                         if d is not None and len(d) >= t_start + min_len:
                             data[f'{group}/{dataset}'] = d[t_start:t_start + min_len]
-                    except:
-                        pass
-        
+                    except Exception as e:
+                        logger.warning(f"Failed to read {group}/{dataset}: {e}")
+
         df = pd.DataFrame(data)
         df.to_excel(filepath, index=False)
         self.status_bar.showMessage(f'Saved last cycle to: {filepath}')
-    
+
     def save_parameters(self):
         if not self.current_file:
             QMessageBox.warning(self, 'Warning', 'No file selected')
             return
-        
+
         filepath, _ = QFileDialog.getSaveFileName(
             self, 'Save Parameters', '', 'Excel Files (*.xlsx)'
         )
-        
+
         if not filepath:
             return
-        
+
         if not filepath.endswith('.xlsx'):
             filepath += '.xlsx'
-        
+
         import pandas as pd
-        
+
         params = []
-        
+
         try:
             time = self.h5_reader.read_dataset('time', '')
             if time is not None:
                 params.append(('max(time)', float(np.max(time)), 'time'))
-        except:
-            pass
+        except Exception as e:
+            logger.warning(f"Failed to read time data: {e}")
         
         if self.current_file.cycle:
             params.append(('stim_period (ms)', self.current_file.cycle, 'calculated'))
@@ -1427,9 +1439,11 @@ class MainWindow(QMainWindow):
                         d = self.current_file.fid[f'/parameters/{dataset}'][()]
                         try:
                             params.append((dataset, float(d), 'parameter'))
-                        except:
+                        except Exception as e:
+                            logger.debug(f"Could not convert {dataset} to float: {e}")
                             params.append((dataset, str(d), 'parameter'))
                     except Exception as e:
+                        logger.warning(f"Failed to read parameter {dataset}: {e}")
                         params.append((dataset, f'Error', 'error'))
         
         df = pd.DataFrame({'Parameter': [p[0] for p in params], 
@@ -1481,8 +1495,8 @@ class MainWindow(QMainWindow):
                                 last_cycle_values[f'{group}/{dataset}'] = float(d[t_start + last_cycle_len - 1])
                             elif len(d) > 0:
                                 last_cycle_values[f'{group}/{dataset}'] = float(d[-1])
-                    except:
-                        pass
+                    except Exception as e:
+                        logger.warning(f"Failed to read {group}/{dataset}: {e}")
         
         with pd.ExcelWriter(filepath, engine='openpyxl') as writer:
             df_first = pd.DataFrame({
@@ -1564,11 +1578,11 @@ class MainWindow(QMainWindow):
                             ax.set_xlabel('time (ms)')
                             ax.set_title(f'{dataset} ({group})')
                             ax.grid(True, alpha=0.3)
-                            
+
                             pdf.savefig(fig)
                             plt.close(fig)
-                    except:
-                        pass
+                    except Exception as e:
+                        logger.warning(f"Failed to save chart {group}/{dataset}: {e}")
         
         with pd.ExcelWriter(filepath, engine='openpyxl') as writer:
             info = []
