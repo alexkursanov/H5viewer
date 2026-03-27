@@ -472,6 +472,7 @@ class MainWindow(QMainWindow):
             self.h5_reader.current_file = self.current_file
             self.update_tree()
             self.update_info()
+            self.delete_file_btn.setEnabled(True)
     
     def delete_file(self):
         current_row = self.files_list.currentRow()
@@ -488,6 +489,7 @@ class MainWindow(QMainWindow):
                 self.current_file = None
                 self.tree_widget.clear()
                 self.clear_info()
+                self.delete_file_btn.setEnabled(False)
     
     def update_tree(self):
         self.tree_widget.clear()
