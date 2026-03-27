@@ -23,106 +23,6 @@ class MatplotlibCanvas(FigureCanvas):
         self.axes = self.fig.add_subplot(111)
         super().__init__(self.fig)
         self.setParent(parent)
-        self.fig.canvas.mpl_connect('button_press_event', self.on_click)
-        self.fig.canvas.mpl_connect('button_release_event', self.on_release)
-        self.zoom_enabled = False
-        self.pan_enabled = False
-        self.press_event = None
-    
-    def on_click(self, event):
-        if event.inaxes != self.axes:
-            return
-        if self.zoom_enabled:
-            self.press_event = (event.xdata, event.ydata)
-        elif self.pan_enabled:
-            self.press_event = (event.xdata, event.ydata)
-    
-    def on_release(self, event):
-        if event.inaxes != self.axes:
-            return
-        if self.zoom_enabled and self.press_event:
-            x0, y0 = self.press_event
-            x1, y1 = event.xdata, event.ydata
-            if x1 is not None and y1 is not None:
-                self.axes.set_xlim(min(x0, x1), max(x0, x1))
-                self.axes.set_ylim(min(y0, y1), max(y0, y1))
-                self.draw()
-        elif self.pan_enabled and self.press_event:
-            x0, y0 = self.press_event
-            x1, y1 = event.xdata, event.ydata
-            if x1 is not None and y1 is not None:
-                dx = x1 - x0
-                dy = y1 - y0
-                xlim = self.axes.get_xlim()
-                ylim = self.axes.get_ylim()
-                self.axes.set_xlim(xlim[0] - dx, xlim[1] - dx)
-                self.axes.set_ylim(ylim[0] - dy, ylim[1] - dy)
-                self.draw()
-        self.press_event = None
-    
-    def enable_zoom(self):
-        self.zoom_enabled = True
-        self.pan_enabled = False
-    
-    def enable_pan(self):
-        self.pan_enabled = True
-        self.zoom_enabled = False
-    
-    def disable_tools(self):
-        self.zoom_enabled = False
-        self.pan_enabled = False
-    
-    def zoom_in(self):
-        xlim = self.axes.get_xlim()
-        ylim = self.axes.get_ylim()
-        xcenter = (xlim[0] + xlim[1]) / 2
-        ycenter = (ylim[0] + ylim[1]) / 2
-        xwidth = (xlim[1] - xlim[0]) * 0.8 / 2
-        ywidth = (ylim[1] - ylim[0]) * 0.8 / 2
-        self.axes.set_xlim(xcenter - xwidth, xcenter + xwidth)
-        self.axes.set_ylim(ycenter - ywidth, ycenter + ywidth)
-        self.draw()
-    
-    def zoom_out(self):
-        xlim = self.axes.get_xlim()
-        ylim = self.axes.get_ylim()
-        xcenter = (xlim[0] + xlim[1]) / 2
-        ycenter = (ylim[0] + ylim[1]) / 2
-        xwidth = (xlim[1] - xlim[0]) * 1.25 / 2
-        ywidth = (ylim[1] - ylim[0]) * 1.25 / 2
-        self.axes.set_xlim(xcenter - xwidth, xcenter + xwidth)
-        self.axes.set_ylim(ycenter - ywidth, ycenter + ywidth)
-        self.draw()
-    
-    def reset_view(self):
-        self.axes.autoscale()
-        self.axes.relim()
-        self.axes.autoscale_view()
-        self.draw()
-    
-    def export_png(self, filepath=None):
-        if filepath is None:
-            filepath, _ = QFileDialog.getSaveFileName(
-                self, 'Save as PNG', '', 'PNG Files (*.png)'
-            )
-        if filepath:
-            if not filepath.endswith('.png'):
-                filepath += '.png'
-            self.fig.savefig(filepath, dpi=300, bbox_inches='tight')
-            return filepath
-        return None
-    
-    def export_pdf(self, filepath=None):
-        if filepath is None:
-            filepath, _ = QFileDialog.getSaveFileName(
-                self, 'Save as PDF', '', 'PDF Files (*.pdf)'
-            )
-        if filepath:
-            if not filepath.endswith('.pdf'):
-                filepath += '.pdf'
-            self.fig.savefig(filepath, dpi=300, bbox_inches='tight')
-            return filepath
-        return None
 
 
 from typing import Optional
@@ -298,26 +198,6 @@ class MainWindow(QMainWindow):
         
         toolbar_layout.addStretch()
         
-        self.zoom_in_btn = QPushButton('Zoom In')
-        self.zoom_in_btn.clicked.connect(self.zoom_in_all_cycles)
-        toolbar_layout.addWidget(self.zoom_in_btn)
-        
-        self.zoom_out_btn = QPushButton('Zoom Out')
-        self.zoom_out_btn.clicked.connect(self.zoom_out_all_cycles)
-        toolbar_layout.addWidget(self.zoom_out_btn)
-        
-        self.reset_view_btn = QPushButton('Reset')
-        self.reset_view_btn.clicked.connect(self.reset_view_all_cycles)
-        toolbar_layout.addWidget(self.reset_view_btn)
-        
-        self.export_png_btn = QPushButton('Export PNG')
-        self.export_png_btn.clicked.connect(self.export_png_all_cycles)
-        toolbar_layout.addWidget(self.export_png_btn)
-        
-        self.export_pdf_btn = QPushButton('Export PDF')
-        self.export_pdf_btn.clicked.connect(self.export_pdf_all_cycles)
-        toolbar_layout.addWidget(self.export_pdf_btn)
-        
         layout.addWidget(toolbar)
         
         splitter = QSplitter(Qt.Orientation.Vertical)
@@ -393,10 +273,14 @@ class MainWindow(QMainWindow):
         selection_btns.addStretch()
         layout.addLayout(selection_btns)
         
+        splitter = QSplitter(Qt.Orientation.Vertical)
+        
         self.last_cycle_canvas = MatplotlibCanvas(widget)
         self.last_cycle_toolbar = NavigationToolbar(self.last_cycle_canvas, widget)
-        layout.addWidget(self.last_cycle_toolbar)
-        layout.addWidget(self.last_cycle_canvas)
+        splitter.addWidget(self.last_cycle_toolbar)
+        splitter.addWidget(self.last_cycle_canvas)
+        
+        layout.addWidget(splitter)
         
         btn_layout = QHBoxLayout()
         
@@ -410,29 +294,6 @@ class MainWindow(QMainWindow):
         self.total_clear_btn.setEnabled(False)
         btn_layout.addWidget(self.total_clear_btn)
         
-        btn_layout.addStretch()
-        
-        self.zoom_in_last_btn = QPushButton('Zoom In')
-        self.zoom_in_last_btn.clicked.connect(self.zoom_in_last_cycle)
-        btn_layout.addWidget(self.zoom_in_last_btn)
-        
-        self.zoom_out_last_btn = QPushButton('Zoom Out')
-        self.zoom_out_last_btn.clicked.connect(self.zoom_out_last_cycle)
-        btn_layout.addWidget(self.zoom_out_last_btn)
-        
-        self.reset_last_btn = QPushButton('Reset')
-        self.reset_last_btn.clicked.connect(self.reset_view_last_cycle)
-        btn_layout.addWidget(self.reset_last_btn)
-        
-        self.export_png_last_btn = QPushButton('Export PNG')
-        self.export_png_last_btn.clicked.connect(self.export_png_last_cycle)
-        btn_layout.addWidget(self.export_png_last_btn)
-        
-        self.export_pdf_last_btn = QPushButton('Export PDF')
-        self.export_pdf_last_btn.clicked.connect(self.export_pdf_last_cycle)
-        btn_layout.addWidget(self.export_pdf_last_btn)
-        
-        btn_layout.addStretch()
         layout.addLayout(btn_layout)
         
         return widget
@@ -791,44 +652,6 @@ class MainWindow(QMainWindow):
         self.all_cycles_canvas.axes.clear()
         self.current_plot_data = {}
         self.all_cycles_canvas.draw()
-    
-    def zoom_in_all_cycles(self):
-        self.all_cycles_canvas.zoom_in()
-    
-    def zoom_out_all_cycles(self):
-        self.all_cycles_canvas.zoom_out()
-    
-    def reset_view_all_cycles(self):
-        self.all_cycles_canvas.reset_view()
-    
-    def export_png_all_cycles(self):
-        filepath = self.all_cycles_canvas.export_png()
-        if filepath:
-            self.status_bar.showMessage(f'Saved to: {filepath}')
-    
-    def export_pdf_all_cycles(self):
-        filepath = self.all_cycles_canvas.export_pdf()
-        if filepath:
-            self.status_bar.showMessage(f'Saved to: {filepath}')
-    
-    def zoom_in_last_cycle(self):
-        self.last_cycle_canvas.zoom_in()
-    
-    def zoom_out_last_cycle(self):
-        self.last_cycle_canvas.zoom_out()
-    
-    def reset_view_last_cycle(self):
-        self.last_cycle_canvas.reset_view()
-    
-    def export_png_last_cycle(self):
-        filepath = self.last_cycle_canvas.export_png()
-        if filepath:
-            self.status_bar.showMessage(f'Saved to: {filepath}')
-    
-    def export_pdf_last_cycle(self):
-        filepath = self.last_cycle_canvas.export_pdf()
-        if filepath:
-            self.status_bar.showMessage(f'Saved to: {filepath}')
     
     def update_x_range(self):
         if not self.current_plot_data:
