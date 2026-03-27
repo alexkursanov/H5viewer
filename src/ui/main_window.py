@@ -22,6 +22,7 @@ from ..core.h5_reader import H5Reader, H5File
 
 
 VERSION = '1.0'
+AUTHOR = 'Nathalie A. Balakina-Vikulova'
 
 
 class MatplotlibCanvas(FigureCanvas):
@@ -467,6 +468,7 @@ class MainWindow(QMainWindow):
             'About H5 Reader',
             f'<h3>H5 Reader</h3>'
             f'<p>Version {VERSION}</p>'
+            f'<p>Author: {AUTHOR}</p>'
             '<p>A program for viewing and analyzing HDF5 files '
             'with cardiomyocyte simulation data.</p>'
             '<p>Features:</p>'
