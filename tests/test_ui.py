@@ -320,5 +320,21 @@ class TestLastCycleTab:
         assert main_window.total_clear_btn.isEnabled() == False
 
 
+class TestHelpMenu:
+    def test_help_menu_exists(self, main_window):
+        menubar = main_window.menuBar()
+        menus = [menubar.actions()[i].text() for i in range(menubar.actions().__len__())]
+        help_menu_found = any('Help' in menu for menu in menus)
+        assert help_menu_found
+    
+    def test_show_documentation_method_exists(self, main_window):
+        assert hasattr(main_window, 'show_documentation')
+        assert callable(main_window.show_documentation)
+    
+    def test_show_about_method_exists(self, main_window):
+        assert hasattr(main_window, 'show_about')
+        assert callable(main_window.show_about)
+
+
 if __name__ == '__main__':
     pytest.main([__file__, '-v'])

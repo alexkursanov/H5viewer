@@ -101,6 +101,17 @@ class MainWindow(QMainWindow):
         exit_action.triggered.connect(self.close)
         file_menu.addAction(exit_action)
         
+        help_menu = menubar.addMenu('Help')
+        
+        docs_action = QAction('Documentation', self)
+        docs_action.setShortcut('F1')
+        docs_action.triggered.connect(self.show_documentation)
+        help_menu.addAction(docs_action)
+        
+        about_action = QAction('About', self)
+        about_action.triggered.connect(self.show_about)
+        help_menu.addAction(about_action)
+        
     def _create_central_widget(self) -> None:
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
@@ -435,6 +446,42 @@ class MainWindow(QMainWindow):
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)
         self.status_bar.showMessage('Ready')
+    
+    def show_documentation(self) -> None:
+        import os
+        doc_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'docs', 'manual.md')
+        if os.path.exists(doc_path):
+            with open(doc_path, 'r', encoding='utf-8') as f:
+                content = f.read()
+            from PyQt6.QtWidgets import QDialog, QVBoxLayout, QTextBrowser
+            from PyQt6.QtGui import QDesktopServices
+            from PyQt6.QtCore import QUrl
+            QDesktopServices.openUrl(QUrl.fromLocalFile(os.path.abspath(doc_path)))
+        else:
+            QMessageBox.warning(self, 'Documentation', 'Documentation file not found')
+    
+    def show_about(self) -> None:
+        QMessageBox.about(
+            self,
+            'About H5 Reader',
+            '<h3>H5 Reader</h3>'
+            '<p>Version 1.0</p>'
+            '<p>A program for viewing and analyzing HDF5 files '
+            'with cardiomyocyte simulation data.</p>'
+            '<p>Features:</p>'
+            '<ul>'
+            '<li>Open and browse HDF5 files</li>'
+            '<li>Plot variables, currents, and forces over time</li>'
+            '<li>Analyze APD, calcium, and force characteristics</li>'
+            '<li>Calculate integrals for calcium handling</li>'
+            '<li>Export data to Excel</li>'
+            '</ul>'
+            '<p>Keyboard shortcuts:</p>'
+            '<ul>'
+            '<li>Ctrl+O - Open file</li>'
+            '<li>F1 - Documentation</li>'
+            '</ul>'
+        )
     
     def open_file(self) -> None:
         filepath, _ = QFileDialog.getOpenFileName(
