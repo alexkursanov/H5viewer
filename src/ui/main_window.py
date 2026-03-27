@@ -449,16 +449,14 @@ class MainWindow(QMainWindow):
     
     def show_documentation(self) -> None:
         import os
-        doc_path = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'docs', 'manual.md')
+        base_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
+        doc_path = os.path.join(base_dir, 'docs', 'manual.md')
         if os.path.exists(doc_path):
-            with open(doc_path, 'r', encoding='utf-8') as f:
-                content = f.read()
-            from PyQt6.QtWidgets import QDialog, QVBoxLayout, QTextBrowser
             from PyQt6.QtGui import QDesktopServices
             from PyQt6.QtCore import QUrl
             QDesktopServices.openUrl(QUrl.fromLocalFile(os.path.abspath(doc_path)))
         else:
-            QMessageBox.warning(self, 'Documentation', 'Documentation file not found')
+            QMessageBox.warning(self, 'Documentation', f'Documentation file not found: {doc_path}')
     
     def show_about(self) -> None:
         QMessageBox.about(
