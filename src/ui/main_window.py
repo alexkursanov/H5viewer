@@ -358,6 +358,8 @@ class MainWindow(QMainWindow):
         right_layout.addWidget(controls)
         
         self.dep_chart_canvas = MatplotlibCanvas(widget)
+        self.dep_chart_toolbar = NavigationToolbar(self.dep_chart_canvas, widget)
+        right_layout.addWidget(self.dep_chart_toolbar)
         right_layout.addWidget(self.dep_chart_canvas)
         
         layout.addWidget(right, 2)
@@ -424,6 +426,8 @@ class MainWindow(QMainWindow):
         right_layout.addWidget(controls)
         
         self.int_chart_canvas = MatplotlibCanvas(widget)
+        self.int_chart_toolbar = NavigationToolbar(self.int_chart_canvas, widget)
+        right_layout.addWidget(self.int_chart_toolbar)
         right_layout.addWidget(self.int_chart_canvas)
         
         layout.addWidget(right, 2)
