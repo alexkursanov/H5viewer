@@ -1,0 +1,2662 @@
+classdef My_H5_reader < matlab.apps.AppBase
+
+    % Properties that correspond to app components
+    properties (Access = public)
+        MainUIFigure                    matlab.ui.Figure
+        MainMenu                        matlab.ui.container.Menu
+        Openh5fileMenu                  matlab.ui.container.Menu
+        Menu                            matlab.ui.container.Menu
+        SavedataMenu                    matlab.ui.container.Menu
+        FolderMenu                      matlab.ui.container.Menu
+        SaveallcyclesMenu               matlab.ui.container.Menu
+        SavethefirstcycleMenu           matlab.ui.container.Menu
+        SaveOneCycleMenu                matlab.ui.container.Menu
+        SaveparamsMenu                  matlab.ui.container.Menu
+        SavelastvarsMenu                matlab.ui.container.Menu
+        SavechartstoXLSMenu             matlab.ui.container.Menu
+        H5filestructurePanel            matlab.ui.container.Panel
+        CycleLengthLabel                matlab.ui.control.Label
+        FrequencyLabel                  matlab.ui.control.Label
+        NumbersofCyclesLabel            matlab.ui.control.Label
+        FilesListBoxLabel               matlab.ui.control.Label
+        FilesListBox                    matlab.ui.control.ListBox
+        Image                           matlab.ui.control.Image
+        DelListButton                   matlab.ui.control.Button
+        AddlinesButton                  matlab.ui.control.Button
+        Struct_treedd                   matlab.ui.container.Tree
+        TabGroup                        matlab.ui.container.TabGroup
+        AllcyclesTab                    matlab.ui.container.Tab
+        UIAxes                          matlab.ui.control.UIAxes
+        DownSlider                      matlab.ui.control.Slider
+        UpSlider                        matlab.ui.control.Slider
+        modeSwitchLabel                 matlab.ui.control.Label
+        modeSwitch                      matlab.ui.control.Switch
+        ClearChartButton                matlab.ui.control.Button
+        DropDownLabel                   matlab.ui.control.Label
+        DropDown                        matlab.ui.control.DropDown
+        SeriesclearButton               matlab.ui.control.Button
+        CheckStimulBox                  matlab.ui.control.CheckBox
+        LastcycleTab                    matlab.ui.container.Tab
+        FigPanel                        matlab.ui.container.Panel
+        TotalclearButton                matlab.ui.control.Button
+        DependenciesTab                 matlab.ui.container.Tab
+        DepTable                        matlab.ui.control.Table
+        NewdataButton                   matlab.ui.control.Button
+        SortdataonHzButton              matlab.ui.control.Button
+        SavetabletoXLSButton            matlab.ui.control.Button
+        CharacteristicsDropDownLabel    matlab.ui.control.Label
+        CharacteristicsDropDown         matlab.ui.control.DropDown
+        DrawchartButton                 matlab.ui.control.Button
+        DepAxes                         matlab.ui.control.UIAxes
+        SortdataonCLButton              matlab.ui.control.Button
+        XAxisDropDownLabel              matlab.ui.control.Label
+        XAxisDropDown                   matlab.ui.control.DropDown
+        TableResortedLabel              matlab.ui.control.Label
+        Label                           matlab.ui.control.Label
+        DelColDropDown                  matlab.ui.control.DropDown
+        DelColButton                    matlab.ui.control.Button
+        IntegralTab                     matlab.ui.container.Tab
+        IntTable                        matlab.ui.control.Table
+        NewIntDataButton                matlab.ui.control.Button
+        SortIntdataonHzButton           matlab.ui.control.Button
+        SaveInttabletoXLSButton         matlab.ui.control.Button
+        CharacteristicsDropDown_2Label  matlab.ui.control.Label
+        IntegralsDropDown               matlab.ui.control.DropDown
+        DrawIntchartButton              matlab.ui.control.Button
+        IntAxes                         matlab.ui.control.UIAxes
+        SortIntdataonCLButton           matlab.ui.control.Button
+        XAxisDropDown_2Label            matlab.ui.control.Label
+        XAxisIntDropDown                matlab.ui.control.DropDown
+        TableIntResortedLabel           matlab.ui.control.Label
+        Label_2                         matlab.ui.control.Label
+        DelColIntDropDown               matlab.ui.control.DropDown
+        DelColIntButton                 matlab.ui.control.Button
+    end
+
+    
+    properties (Access = private)
+    ax % Массив uiaxes
+    end
+    
+    methods (Access = private)
+        
+        function updateSeriesDropdown(app)
+            % Находим все оставшиеся линии
+            lines = findobj(app.UIAxes, 'Type', 'line');
+            
+            if ~isempty(lines)
+                % Обновляем DropDown
+                lineNames = arrayfun(@(x) x.DisplayName, lines, 'UniformOutput', false);
+                app.DropDown.Items = lineNames;
+                %app.DropDown.ItemsData = lines; % (если используется ItemsData)
+            else
+                % Если линий не осталось — очищаем DropDown
+                app.DropDown.Items = {'NA'};
+                app.DropDown.Enable=0;
+                app.SeriesclearButton.Enable=0;
+                %app.CheckStimulBox.Enable=0;
+                app.CheckStimulBox.Value=0;
+                app.ClearChartButton.Enable=0;
+                %app.DropDown.ItemsData = [];
+            end
+end
+        
+        function SortTable(app, Table, RowXIndex)
+            cell_style = uistyle('BackgroundColor',[1 0.6 0.6]);
+            data = Table.Data; % Извлекаем данные из таблицы
+            columnNames=Table.ColumnName;
+            rowNames = data(:, 1); % Извлекаем названия рядов (первый столбец)
+            
+            % Извлекаем данные для сортировки (все столбцы, кроме первого)
+            dataToSort = data(:, 2:end); % Игнорируем первый столбец
+            rowToSort=dataToSort(RowXIndex, :);
+            
+            % Сортируем данные по первой строке
+            % Мы используем sortrows для сортировки в зависимости от первой строки данных
+            Xc=table2cell(rowToSort);
+            Xa=cell2mat(Xc);
+            [~, sortOrder]=sort(Xa); % Получаем порядок сортировки по первой строке
+    
+            % Переставляем столбцы в соответствии с порядком сортировки
+            sortedData = data(:, [1, sortOrder + 1]); % Сохраняем первый столбец и переставляем остальные
+            sortedCoulmnNames=[columnNames{1}, columnNames(sortOrder+1)']; 
+          
+            % Обновляем данные таблицы
+            Table.Data = sortedData;
+             % Обновляем заголовки столбцов
+            Table.ColumnName=sortedCoulmnNames;
+            addStyle(Table,cell_style,'row',[RowXIndex]);
+        end
+   
+        function showMessage(app, Label)
+            Label.Visible=1;     
+            t = timer; % Создайте таймер
+            t.StartDelay = 1; % Таймер с ожиданием 1 секунды
+            t.TimerFcn = @(~, ~) closeAlert(app, t, Label); % Установите функцию закрытия
+            start(t); % Запустите таймер
+         end
+        
+        % Функция для закрытия предупреждения
+        function closeAlert(app, t, Label)
+            stop(t); % Остановить таймер
+            delete(t); % Удалить таймер
+            Label.Visible=0;    
+        end
+        
+        function SavetabletoXLS(app, Table, capture)
+           data = Table.Data;          
+           dateTime = datestr(now, 'yyyymmdd_HHMMSS'); 
+           save_pname=app.FolderMenu.Tooltip;
+           fileName = sprintf(capture, dateTime); 
+           Outputfile=strcat(save_pname, fileName);
+           writetable(data, Outputfile);
+           winopen(Outputfile);   
+        end
+        
+        function DelCol (app, Table, DropDown)
+           columnToDel=DropDown.Value;  
+           Table.Data(:, strcmp(Table.ColumnName, columnToDel))=[];
+           Table.ColumnName(strcmp(Table.ColumnName, columnToDel))=[];
+           itemIndex = find(strcmp(DropDown.Items, columnToDel));
+           DropDown.Items(itemIndex) = [];
+           if ~isempty(DropDown.Items)
+              DropDown.Value = DropDown.Items{1}; 
+           else
+              Table.Data(:,1)=[];
+              Table.ColumnName(1)=[];
+           end      
+        end       
+        
+               
+        function sort_flag_new = DrawChart (app, Axes, DropDown, XDropDown, Table, Label, sort_flag)         
+            selected_Value=DropDown.Value;    
+            if contains(selected_Value,"_")
+                if contains(selected_Value," ")
+                     title_selected_Value=strcat(extractBefore(selected_Value,"_"),"_{",extractBetween(selected_Value,"_"," "),"}");
+                else
+                     title_selected_Value=strcat(extractBefore(selected_Value,"_"),"_{",extractAfter(selected_Value,"_"),"}");
+                end    
+            else
+                title_selected_Value=selected_Value;      
+            end
+            if contains(selected_Value,"(")
+                Ytitle=strcat(extractBetween(selected_Value,"(",")"));
+            else 
+                Ytitle=" ";
+            end
+            Axes.Title.String=title_selected_Value;
+            Axes.YLabel.String=Ytitle;
+            selected_XAxis=XDropDown.Value;  
+            Axes.XLabel.String=selected_XAxis;
+            
+            data = Table.Data; 
+            rowNames = data(:, 1);
+            Yc=table2cell(rowNames);
+        
+            rowXIndex=find(strcmp(Yc, selected_XAxis));
+            if rowXIndex ~= sort_flag
+                 if sort_flag~=0   
+                     cell_style = uistyle('BackgroundColor',[1 1 1]);
+                     addStyle(Table,cell_style,'row',[sort_flag]);   
+                 end
+                     SortTable(app, Table, rowXIndex); 
+                     showMessage(app, Label);
+                     sort_flag_new=rowXIndex;
+            else  
+                 sort_flag_new=sort_flag;
+            end
+        
+            data = Table.Data; 
+            DataToDraw = data(:, 2:end); %already resorted table
+            
+            rowIndex=find(strcmp(Yc, selected_Value));
+            
+            XrowToDraw=DataToDraw(rowXIndex, :);
+            Xc=table2cell(XrowToDraw);
+            Xa=cell2mat(Xc);
+        
+            if numel(unique(Xa)) < numel(Xa)
+                 uialert(app.MainUIFigure,['The same frequencies in the columns of the table.' ...
+                   ' It is impossible to draw a graph.  Please delete one of the columns.'],...
+                   'Same Frequences');   
+            else
+                 if rowXIndex==1 
+                     Axes.XLim=[0.3, max(Xa)+0.3];
+                 else
+                     Axes.XLim=[100, max(Xa)+100];
+                 end    
+                Axes.XTick=Xa;
+          
+                YrowToDraw=DataToDraw(rowIndex, :);
+                Yc=table2cell(YrowToDraw);
+                Ya=cell2mat(Yc);
+                Axes.YLim=[min(Ya)-0.1*(max(Ya)-min(Ya)), max(Ya)+0.1*(max(Ya)-min(Ya))];
+                
+                plot(Axes,Xa,Ya,'*-','LineWidth',2,'Markersize',7,'MarkerEdgeColor','red');  
+            end 
+        end 
+    end
+
+    % Callbacks that handle component events
+    methods (Access = private)
+
+        % Code that executes after component creation
+        function startupFcn(app)
+         global n_files   
+         global full_path
+         global add_data
+         global num_columns
+         global dataContainer
+         global sort_flag_dep
+         global sort_flag_int
+       
+            app.FilesListBox.Value = {};
+            n_files = 0;
+            full_path=strings;
+            add_data=false;
+            num_columns=0;
+            sort_flag_int=0;
+            sort_flag_dep=0;
+            dataContainer = struct();
+            app.AddlinesButton.Enable=0;
+            
+            app.ax=gobjects(8,1);
+            size_choice2=int64(idivide(int64(app.FigPanel.InnerPosition(4)),int64(2)));
+            size_choice4=int64(idivide(int64(app.FigPanel.InnerPosition(3)),int64(4)));
+            ax_width=size_choice4;
+            ax_height=size_choice2;
+                        
+            for idx=1:8
+                       if idx<=4
+                            row=1;
+                        else
+                            row=2;
+                        end
+                       
+                        ax_x=mod(idx-1,4)*size_choice4;
+                        ax_y=app.FigPanel.InnerPosition(4)-row*size_choice2+1;
+                        
+                        if idx<=7
+                            app.ax(idx)=uiaxes(app.FigPanel, 'Position',[ax_x ax_y ax_width ax_height]); 
+                        else
+                            app.ax(idx)=uiaxes(app.FigPanel, 'Position',[ax_x ax_y+40 ax_width ax_height-40]);  
+                            app.TotalclearButton.Position=[ax_x+0.5*size_choice4 10 100 22];
+                        end
+                        app.ax(idx).Visible=false;             
+            end
+            
+            
+            dopx=app.ax(8);
+            dopx.XColor = 'none';            % Прячем ось X
+            dopx.YColor = 'none';            % Прячем ось Y
+            dopx.Color = 'none';             % Прозрачный фон
+%             dopx.XTick = [];                 % Убираем деления на оси X
+%             dopx.YTick = [];                 % Убираем деления на оси Y
+%             dopx.Box = 'off';                % Отключаем рамку вокруг осей
+%             dopx.Title.String = '';          % Убираем заголовок
+%             dopx.XLabel.String = '';         % Убираем подпись оси X
+%             dopx.YLabel.String = '';         % Убираем подпись оси Y
+            legend(dopx, 'show', 'Location', 'northwest');
+            legend(dopx,'boxoff');
+            dopx.Visible=false;
+        end
+
+        % Menu selected function: Openh5fileMenu
+        function Openh5fileMenuSelected(app, event)
+         global fid
+         global InputFile
+         global pname
+         global fname
+         global graphs_exists
+         global last_size_choice
+         global n_files
+         global full_path
+                        
+           app.Image.Visible=1;    
+           [fname, pname]=uigetfile ('\\wsl.localhost\Ubuntu\home\nv\projects\cardiac_cell_Pasha\data\results.h5', 'Select input file h5');
+           figure(app.MainUIFigure);
+           
+           if ~isequal(fname, 0)
+               if fname=="" 
+                 fname='results.h5';
+               end    
+               
+               InputFile=strcat(pname, fname); 
+               fid = H5F.open(InputFile);
+       
+               if ismember(fname,app.FilesListBox.Items)
+                   uialert(app.MainUIFigure,'File already in the FileList','Existing File');  
+               else
+                   n_files=n_files+1;
+                   app.FilesListBox.Items(n_files)={fname};
+                   full_path(n_files)=strcat(pname,fname);
+                   app.FilesListBox.Value=fname;
+                   app.FilesListBox.ValueChangedFcn(app,app.FilesListBox.Value);
+                   app.DelListButton.Enable=true;
+                   app.Struct_treedd.Visible=true;
+                   app.SavedataMenu.Enable=true;
+                   app.FolderMenu.Tooltip=pname;
+                   app.SaveparamsMenu.Enable=true;
+                   app.SavelastvarsMenu.Enable=true;
+                   app.SaveallcyclesMenu.Enable=true;
+                   app.SaveOneCycleMenu.Enable=true;       
+                   graphs_exists=false;
+                   last_size_choice=0;
+               end  
+          end
+          app.Image.Visible=0;  
+        end
+
+        % Selection changed function: Struct_treedd
+        function Struct_treeddSelectionChanged(app, event)
+         global All_group_names
+         global num_grps
+         global All_dataset_name
+         global num_dts
+         global InputFile
+         global time
+         global cycle
+         global points_mod
+         global last_size_choice
+         global selected
+         global size_choice
+         global text_selected
+         global Group_selected
+         global vars
+       
+            
+            if app.TabGroup.SelectedTab==app.AllcyclesTab
+                app.AddlinesButton.Enable=0;
+                %app.CheckStimulBox.Value=0;
+                app.Struct_treedd.SelectedNodes=app.Struct_treedd.SelectedNodes(1);
+                app.Struct_treedd.Multiselect=false;            
+                selected = app.Struct_treedd.SelectedNodes;
+                selected_dataset =  selected.Text;
+
+                
+                if  any(app.DropDown.Items=="NA") && (selected_dataset ~= "currents") && (selected_dataset ~= "forces") ...
+                        && (selected_dataset ~= "variables") && (selected_dataset ~= "parameters") 
+                   app.DropDown.Enable=1;
+                   app.SeriesclearButton.Enable=1;
+                   app.ClearChartButton.Enable=1;
+                   app.DropDown.Items={};
+                   %app.ClearseriesButton.Enable=1;
+                end
+                
+                for i=1:num_grps
+                    for j=1:num_dts(i)
+                        if All_dataset_name(i,j)==selected_dataset
+                            if (All_group_names(i)=="variables") || (All_group_names(i)=="currents") || (All_group_names(i)=="forces")
+                                time=h5read(InputFile,'/time');
+                                path_dataset(i)=strcat('/',string(All_group_names(i)),'/',selected_dataset);
+                                vars=h5read(InputFile,path_dataset(i));
+                                
+                                if contains(selected_dataset,"_")
+                                     title_selected_dataset=strcat(extractBefore(selected_dataset,"_"),"_{",extractAfter(selected_dataset,"_"),"}");
+                                else
+                                     title_selected_dataset=selected_dataset;   
+                                end 
+                                if app.modeSwitch.Value=="Single"
+                                 app.CheckStimulBox.Enable=1;   
+                                 app.DropDown.Items={};   
+                                 %app.UIAxes.Title.String=title_selected_dataset; 
+                                 app.UIAxes.XLim=[0, max(time)];
+                                
+                                 if min(vars)<max(vars)
+                                     app.UIAxes.YLim=[min(vars), max(vars)];
+                                 else
+                                     app.UIAxes.YLim=[min(vars)-1, max(vars)+1];
+                                 end
+                                else
+                                   if  app.UIAxes.YLim(1)>min(vars)
+                                       app.UIAxes.YLim(1)=min(vars);
+                                   end
+                                   if app.UIAxes.YLim(2)<max(vars)
+                                       app.UIAxes.YLim(2)=max(vars); 
+                                   end
+                                   if app.UIAxes.XLim(2)<max(time)
+                                      app.UIAxes.XLim(2)=max(time); 
+                                   end
+                                   
+                                end
+                                app.UpSlider.Limits=[0 app.UIAxes.XLim(2)];
+                                app.DownSlider.Limits=[0 app.UIAxes.XLim(2)];
+                                app.DownSlider.Value=app.UIAxes.XLim(2); 
+                                app.UIAxes.XLabel.String='msec';                         
+                                app.UpSlider.Value=0;
+                                title_selected_file=strrep(app.FilesListBox.Value,'_', ' ');
+                                legend_name=strcat(title_selected_dataset, " from ", title_selected_file);
+                                plot(app.UIAxes,time,vars, "DisplayName",legend_name);
+                                app.DropDown.Items=[app.DropDown.Items, legend_name];
+                                legend(app.UIAxes, 'show');
+                                legend(app.UIAxes, 'Location', 'northeast');
+                                
+                                app.UIAxes.Visible=true;
+                                app.UpSlider.Visible=true;
+                                app.DownSlider.Visible=true;
+                            end    
+                        end
+                    end
+                end
+                last_size_choice=size(app.Struct_treedd.SelectedNodes,1);
+                
+               
+                
+           end  
+            
+           if app.TabGroup.SelectedTab==app.LastcycleTab
+               
+                
+                
+               app.Struct_treedd.Multiselect=true; 
+               app.AddlinesButton.Enable=1;
+                
+                
+                selected = app.Struct_treedd.SelectedNodes;
+                size_choice=size(selected, 1);
+                text_selected=strings(numel(selected), 1);
+                Group_selected=strings(numel(selected), 1);
+                
+                
+                if size_choice<=7
+                  for idx=1:8
+                    app.ax(idx).Visible='off'; 
+                    delete(app.ax(idx).Children);
+                    hold(app.ax(idx), 'off');
+                   drawnow;
+                  end  
+                  app.TotalclearButton.Enable=true; 
+                  for idx=1:size_choice
+                 
+                          text_selected(idx) = selected(idx).Text;
+                          
+                   
+                      for i=1:num_grps
+                          for j=1:num_dts(i)
+                            if All_dataset_name(i,j)==text_selected(idx)
+                                if (All_group_names(i)=="variables") || (All_group_names(i)=="currents") || (All_group_names(i)=="forces")
+                                    time=h5read(InputFile,'/time');
+                                    t=time((max(time)+1-cycle-points_mod):(max(time)+1-points_mod));
+                                    t_sdvig=t-t(1);
+                                    path_dataset(i)=strcat('/',string(All_group_names(i)),'/',text_selected(idx));
+                                    vars=h5read(InputFile,path_dataset(i),t(1),double(cycle+1));
+                                    Group_selected(idx)=string(All_group_names(i));
+                                    
+                                    
+                                    if contains(text_selected(idx),"_")
+                                     title_selected_dataset=strcat(extractBefore(text_selected(idx),"_"),"_{",extractAfter(text_selected(idx),"_"),"}");
+                                    else
+                                     title_selected_dataset=text_selected(idx);   
+                                    end 
+                                   
+                                    app.ax(idx).Title.String=title_selected_dataset;
+                                    app.ax(idx).XLabel.String='msec';
+                                    app.ax(idx).XLim=[t(1), max(time)];
+                                    title_selected_file=strrep(app.FilesListBox.Value,'_', ' ');
+                                    legend_name=strcat(title_selected_file);
+                                  
+                                    
+                                    
+                                     app.ax(idx).Title.String=title_selected_dataset; 
+                                     app.ax(idx).XLim=[t(1)-t(1), max(time)+1-points_mod-t(1)];
+                                
+                                     if min(vars)<max(vars)
+                                         app.ax(idx).YLim=[min(vars), max(vars)];
+                                     else
+                                         app.ax(idx).YLim=[min(vars)-1, max(vars)+1];
+                                     end
+%                                     else
+%                                        if  ax(idx).YLim(1)>min(vars)
+%                                            ax(idx).YLim(1)=min(vars);
+%                                        end
+%                                        if ax(idx).YLim(2)<max(vars)
+%                                            ax(idx).YLim(2)=max(vars); 
+%                                        end
+%                                        if ax(idx).XLim(2)<max(time)
+%                                           ax(idx).XLim(2)=max(time); 
+%                                        end
+                                       
+                                  
+                                    
+                                    plot(app.ax(idx),t_sdvig,vars);%, "DisplayName",legend_name);
+                                    plot(app.ax(8),NaN,NaN,"DisplayName",legend_name);
+                                    %legend(app.ax(idx), 'show');
+                                    %legend(app.ax(idx), 'Location', 'northeast');
+                                    app.ax(idx).Visible=true;          
+                                    drawnow;
+                                 end    
+                           end
+                         end                   
+                     end      
+                  end  
+                 app.ax(8).Visible=true;
+                 legend(app.ax(8), 'show');
+                 
+                 drawnow;
+             else
+                 app.FigPanel.Title='More than 7 Figs!';  
+                end
+             last_size_choice=size(app.Struct_treedd.SelectedNodes,1);   
+           end  
+        end
+
+        % Close request function: MainUIFigure
+        function MainUIFigureCloseRequest(app, event)
+         
+            delete(app)
+            
+        end
+
+        % Value changed function: UpSlider
+        function UpSliderValueChanged(app, event)
+         global cycle
+            value = app.UpSlider.Value;
+            if value>=app.DownSlider.Value 
+                app.UIAxes.XLim=[app.DownSlider.Value-cycle, app.DownSlider.Value];
+                app.UpSlider.Value=app.DownSlider.Value-cycle;
+            else
+                app.UIAxes.XLim=[value, app.DownSlider.Value];
+            end
+        end
+
+        % Callback function
+        function DownSliderValueChanged(app, event)
+         global cycle
+             value = app.DownSlider.Value;
+             if value<=app.UpSlider.Value
+                app.UIAxes.XLim=[app.UpSlider.Value, app.UpSlider.Value+cycle];
+             else
+                app.UIAxes.XLim=[app.UpSlider.Value, value];
+             end
+        end
+
+        % Menu selected function: SavelastvarsMenu
+        function SavelastvarsMenuSelected(app, event)
+         global fname
+         global All_group_names
+         global num_grps
+         global All_dataset_name
+         global num_dts        
+         global InputFile
+         global time
+         global cycle
+         global count_cycle
+         global Herz
+         global points_mod
+         global save_pname
+         
+            app.Image.Visible=1;
+            drawnow;
+            save_pname=app.FolderMenu.Tooltip;
+            fname=app.FilesListBox.Value;
+            fname_short=fname(1:strfind(fname, ".h5")-1);
+            DateString=datestr(datetime('now'));
+            
+            dt = strrep(DateString,":","_");
+            dt = strrep(dt," ","_");
+            
+            Outputfile_vars=strcat(save_pname, 'LastValues_vars_',fname_short,'_',dt,'.xlsx');
+
+            for i=1:num_grps
+                 if All_group_names(i)=="variables" 
+                     for j=1:num_dts(i)
+                        path='/'+string(All_group_names(i))+'/'+string(All_dataset_name(i,j));
+                        Value_par_title=strcat('A',num2str(j),'');    
+                        writematrix(All_dataset_name(i,j),Outputfile_vars,'Sheet','Last_vars_values','Range',Value_par_title);
+                        writematrix(All_dataset_name(i,j),Outputfile_vars,'Sheet','First_vars_values','Range',Value_par_title);
+                        tm=time(max(time)-points_mod+1);
+                        Var=h5read(InputFile,path,tm,1);
+                   %     tm1=time(1);
+                        Var1=h5read(InputFile,path,1,1);
+                        Value_par_title=strcat('B',num2str(j),'');   
+                        writematrix(Var,Outputfile_vars,'Sheet','Last_vars_values','Range',Value_par_title);
+                        writematrix(Var1,Outputfile_vars,'Sheet','First_vars_values','Range',Value_par_title);
+                        writematrix("точка стационара: ",Outputfile_vars,'Sheet','Last_vars_values','Range','D1');
+                        writematrix(tm,Outputfile_vars,'Sheet','Last_vars_values','Range','E1');
+                        writematrix("Длина цикла: ",Outputfile_vars,'Sheet','Last_vars_values','Range','D2');
+                        writematrix(cycle,Outputfile_vars,'Sheet','Last_vars_values','Range','E2');
+                        writematrix("Количество циклов: ",Outputfile_vars,'Sheet','Last_vars_values','Range','D3');
+                        writematrix(count_cycle,Outputfile_vars,'Sheet','Last_vars_values','Range','E3');
+                        writematrix("Частота: ",Outputfile_vars,'Sheet','Last_vars_values','Range','D4');
+                        writematrix(Herz,Outputfile_vars,'Sheet','Last_vars_values','Range','E4');
+                      end  
+                  end
+            end
+            winopen(Outputfile_vars);   
+            app.Image.Visible=0;
+            drawnow;
+        end
+
+        % Menu selected function: SaveparamsMenu
+        function SaveparamsMenuSelected(app, event)
+         global save_pname
+         global fname
+         global All_group_names
+         global num_grps
+         global All_dataset_name
+         global num_dts
+         global InputFile
+            
+            app.Image.Visible=1;
+            drawnow;
+            save_pname=app.FolderMenu.Tooltip;
+            fname=app.FilesListBox.Value;
+            fname_short=fname(1:strfind(fname, ".h5")-1);
+            DateString=datestr(datetime('now'));
+            dt = strrep(DateString,":","_");
+            dt = strrep(dt," ","_");
+            Outputfile_param=strcat(save_pname, 'parameters_for_',fname_short,'_',dt,'.xlsx');
+            for i=1:num_grps
+                 if All_group_names(i)=="parameters"      
+                     for j=1:num_dts(i)
+                      path='/'+string(All_group_names(i))+'/'+string(All_dataset_name(i,j));
+                      Value_par_title=strcat('A',num2str(j),'');    
+                      writematrix(All_dataset_name(i,j),Outputfile_param,'Sheet','Parameters','Range',Value_par_title);
+                      Var=h5read(InputFile,path,j,1);
+                      Value_par_title=strcat('B',num2str(j),'');   
+                      writematrix(Var,Outputfile_param,'Sheet','Parameters','Range',Value_par_title);
+                     end
+                 end   
+            end          
+            winopen(Outputfile_param);
+            app.Image.Visible=0;
+            drawnow;
+        end
+
+        % Menu selected function: FolderMenu
+        function FolderMenuSelected(app, event)
+         global pname
+         global save_pname
+
+            save_pname=uigetdir(pname); 
+            if save_pname==""
+                save_pname=pname;
+            end
+            app.FolderMenu.Tooltip=save_pname;
+        end
+
+        % Value changed function: DownSlider
+        function DownSliderValueChanged2(app, event)
+         global cycle
+            
+            value = app.DownSlider.Value;
+            if value<=app.UpSlider.Value 
+                app.UIAxes.XLim=[app.UpSlider.Value, app.UpSlider.Value+cycle];
+                app.DownSlider.Value=app.UpSlider.Value+cycle;
+            else
+                app.UIAxes.XLim=[app.UpSlider.Value, value];
+            end
+        end
+
+        % Menu selected function: SaveOneCycleMenu, 
+        % SavethefirstcycleMenu
+        function SaveOneCycleMenuSelected(app, event)
+         global save_pname
+         global fname
+         global selected
+         global last_size_choice
+         global All_group_names
+         global num_grps
+         global All_dataset_name
+         global num_dts        
+         global InputFile
+         global time
+         global cycle
+         global points_mod
+         global Herz
+         
+         
+            app.Image.Visible=1;
+            drawnow;
+         
+            source=event.Source;
+            
+            switch source.Text
+                case 'Save the first cycle'
+                    order=0;
+                case 'Save the last cycle'    
+                    order=1
+            end
+            
+            TF=isempty (app.Struct_treedd.SelectedNodes);
+            if TF                
+               f = msgbox({'Invalid Selection';'No item to save is checked.'; ...
+                   'Please, use h5 file structure tree to select';' one or more items in Last cycle tab mode'}, ...
+                   'Error','error');            
+            else
+                Columns=["B","C","D","E","F","G","H","I","J","K","L","M","N","O","P","Q","R","S","T","U","V","W","X","Y","Z"];
+                Row=2; 
+                save_pname=app.FolderMenu.Tooltip;
+                fname=app.FilesListBox.Value;
+                fname_short=fname(1:strfind(fname, ".h5")-1);
+                DateString=datestr(datetime('now'));
+                dt = strrep(DateString,":","_");
+                dt = strrep(dt," ","_");
+                if order==0
+                 Outputfile=strcat(save_pname, 'First_cycles_for_',fname_short,'_',dt,'.xlsx');  
+                else
+                 Outputfile=strcat(save_pname, 'Last_cycles_for_',fname_short,'_',dt,'.xlsx');
+                end
+                
+                if last_size_choice~=0
+                    time=h5read(InputFile,'/time');
+                    if order==0
+                     t=time(1:cycle+1);
+                     t_beg=t;
+                    else
+                      t=time((max(time)+1-cycle-points_mod):(max(time)+1-points_mod));
+                      t_beg=time(1:cycle+1);  
+                    end
+                    
+                    Value_t_large=strcat('A2:A',num2str(cycle+3));
+                    
+                    writematrix('time (ms)',Outputfile,'Sheet','Data_for_figs','Range','A1');
+                    writematrix(t_beg,Outputfile,'Sheet','Data_for_figs','Range',Value_t_large); 
+                    writematrix('Frequency (Hz)',Outputfile,'Sheet','Characteristics_for_figs','Range','A1')
+                    writematrix(Herz,Outputfile,'Sheet','Characteristics_for_figs','Range','B1')
+                end
+            
+                for idx=1:last_size_choice
+                    for i=1:num_grps
+                        for j=1:num_dts(i)
+      
+                         if All_dataset_name(i,j)==selected(idx).Text
+                            
+                            if (All_group_names(i)=="variables") || (All_group_names(i)=="currents") || (All_group_names(i)=="forces")
+                            
+                            path_dataset(i)=strcat('/',string(All_group_names(i)),'/',selected(idx).Text);
+                            vars=h5read(InputFile,path_dataset(i),t(1)+1,double(cycle+1));
+                            
+                            Value_var_title=strcat(Columns(idx),'1');                                           
+                            Value_var_large=strcat(Columns(idx),'2:',Columns(idx),num2str(cycle+2));
+                            
+                            writematrix(selected(idx).Text,Outputfile,'Sheet','Data_for_figs','Range',Value_var_title);                        
+                            writematrix(vars,Outputfile,'Sheet','Data_for_figs','Range',Value_var_large);
+                            
+                            if selected(idx).Text=='V'
+                                
+                                path_c=strcat('A',num2str(Row));
+                                writematrix('==== Membrane Potential ====',Outputfile,'Sheet','Characteristics_for_figs','Range',path_c);
+                                Row=Row+1;
+                                
+                                path_c=strcat('A',num2str(Row));
+                                writematrix('V_max (mV)',Outputfile,'Sheet','Characteristics_for_figs','Range',path_c);
+                                path_c=strcat('B',num2str(Row));
+                                writematrix(max(vars),Outputfile,'Sheet','Characteristics_for_figs','Range',path_c);
+                                Row=Row+1;
+                                
+                                path_c=strcat('A',num2str(Row));
+                                writematrix('V_min (mV)',Outputfile,'Sheet','Characteristics_for_figs','Range',path_c);
+                                path_c=strcat('B',num2str(Row));
+                                writematrix(min(vars),Outputfile,'Sheet','Characteristics_for_figs','Range',path_c);
+                                Row=Row+1;
+                                
+                                path_c=strcat('A',num2str(Row));
+                                writematrix('V_ampl (mV)',Outputfile,'Sheet','Characteristics_for_figs','Range',path_c);
+                                path_c=strcat('B',num2str(Row));
+                                ampl_v=max(vars)-min(vars);
+                                writematrix(ampl_v,Outputfile,'Sheet','Characteristics_for_figs','Range',path_c);
+                                Row=Row+1;
+                                
+                                path_c=strcat('A',num2str(Row));
+                                writematrix('tV_max (ms)',Outputfile,'Sheet','Characteristics_for_figs','Range',path_c);
+                                path_c=strcat('B',num2str(Row));
+                                tVmax=find(vars==max(vars))-10; %вычитаем стимул
+                                writematrix(tVmax,Outputfile,'Sheet','Characteristics_for_figs','Range',path_c);
+                                Row=Row+1;
+                             
+                                path_c=strcat('A',num2str(Row));
+                                writematrix('APD20 (ms)',Outputfile,'Sheet','Characteristics_for_figs','Range',path_c);
+                                path_c=strcat('B',num2str(Row));
+                                V20=0.8*ampl_v+min(vars);
+                                Vup=find(vars>V20);
+                                APD20=Vup(end)-(tVmax+10); %учитываем вычтенный из tVmax стимул
+                                writematrix(APD20,Outputfile,'Sheet','Characteristics_for_figs','Range',path_c);
+                                Row=Row+1;
+                                
+                                path_c=strcat('A',num2str(Row));
+                                writematrix('APD50 (ms)',Outputfile,'Sheet','Characteristics_for_figs','Range',path_c);
+                                path_c=strcat('B',num2str(Row));
+                                V50=0.5*ampl_v+min(vars);
+                                Vup=find(vars>V50);
+                                APD50=Vup(end)-(tVmax+10); %учитываем вычтенный из tVmax стимул
+                                writematrix(APD50,Outputfile,'Sheet','Characteristics_for_figs','Range',path_c);
+                                Row=Row+1;
+                                
+                                path_c=strcat('A',num2str(Row));
+                                writematrix('APD90 (ms)',Outputfile,'Sheet','Characteristics_for_figs','Range',path_c);
+                                path_c=strcat('B',num2str(Row));
+                                V90=0.1*ampl_v+min(vars);
+                                Vup=find(vars>V90);
+                                APD90=Vup(end)-(tVmax+10); %учитываем вычтенный из tVmax стимул
+                                writematrix(APD90,Outputfile,'Sheet','Characteristics_for_figs','Range',path_c);
+                                Row=Row+1;
+                                
+                            end
+                            
+                            if selected(idx).Text=="F_XSE"
+                                
+                                path_c=strcat('A',num2str(Row));
+                                writematrix('==== FORCE ====',Outputfile,'Sheet','Characteristics_for_figs','Range',path_c);
+                                Row=Row+1;
+                                
+                                path_c=strcat('A',num2str(Row));
+                                writematrix('FXSE_max (AFU)',Outputfile,'Sheet','Characteristics_for_figs','Range',path_c);
+                                path_c=strcat('B',num2str(Row));
+                                writematrix(max(vars),Outputfile,'Sheet','Characteristics_for_figs','Range',path_c);
+                                Row=Row+1; 
+                                
+                                path_c=strcat('A',num2str(Row));
+                                writematrix('FXSE_min (AFU)',Outputfile,'Sheet','Characteristics_for_figs','Range',path_c);
+                                path_c=strcat('B',num2str(Row));
+                                writematrix(vars(10),Outputfile,'Sheet','Characteristics_for_figs','Range',path_c);
+                                Row=Row+1; 
+                                
+                                path_c=strcat('A',num2str(Row));
+                                writematrix('FXSE_ampl (AFU)',Outputfile,'Sheet','Characteristics_for_figs','Range',path_c);
+                                path_c=strcat('B',num2str(Row));
+                                ampl_F=max(vars)-vars(10);
+                                writematrix(ampl_F,Outputfile,'Sheet','Characteristics_for_figs','Range',path_c);
+                                Row=Row+1;
+                                
+                                path_c=strcat('A',num2str(Row));
+                                writematrix('tFXSE_max (ms)',Outputfile,'Sheet','Characteristics_for_figs','Range',path_c);
+                                path_c=strcat('B',num2str(Row));
+                                tFmax=find(vars==max(vars))-10; %вычитаем стимул
+                                writematrix(tFmax,Outputfile,'Sheet','Characteristics_for_figs','Range',path_c);
+                                Row=Row+1;
+                                
+                                path_c=strcat('A',num2str(Row));
+                                writematrix('FXSE_D50 (ms)',Outputfile,'Sheet','Characteristics_for_figs','Range',path_c);
+                                path_c=strcat('B',num2str(Row));
+                                F50=0.5*ampl_F+min(vars);
+                                Fup=find(vars>F50);
+                                FXSE_D50=Fup(end)-(tFmax+10); %учитываем вычтенный из tFmax стимул
+                                writematrix(FXSE_D50,Outputfile,'Sheet','Characteristics_for_figs','Range',path_c);
+                                Row=Row+1;
+                                
+                                path_c=strcat('A',num2str(Row));
+                                writematrix('FXSE_D70 (ms)',Outputfile,'Sheet','Characteristics_for_figs','Range',path_c);
+                                path_c=strcat('B',num2str(Row));
+                                F70=0.3*ampl_F+min(vars);
+                                Fup=find(vars>F70);
+                                FXSE_D70=Fup(end)-(tFmax+10); %учитываем вычтенный из tFmax стимул
+                                writematrix(FXSE_D70,Outputfile,'Sheet','Characteristics_for_figs','Range',path_c);
+                                Row=Row+1;
+                                
+                                path_c=strcat('A',num2str(Row));
+                                writematrix('FXSE_D90 (ms)',Outputfile,'Sheet','Characteristics_for_figs','Range',path_c);
+                                path_c=strcat('B',num2str(Row));
+                                F90=0.1*ampl_F+min(vars);
+                                Fup=find(vars>F90);
+                                FXSE_D90=Fup(end)-(tFmax+10); %учитываем вычтенный из tFmax стимул
+                                writematrix(FXSE_D90,Outputfile,'Sheet','Characteristics_for_figs','Range',path_c);
+                                Row=Row+1;
+                                
+                                for k=t_beg(10):tFmax
+                                    DFup(k)=vars(k)-vars(k-1);
+                                end
+                                path_c=strcat('A',num2str(Row));
+                                writematrix('DFmax (AFU/ms)',Outputfile,'Sheet','Characteristics_for_figs','Range',path_c);
+                                path_c=strcat('B',num2str(Row));
+                                writematrix(max(DFup),Outputfile,'Sheet','Characteristics_for_figs','Range',path_c);
+                                Row=Row+1;
+                                path_c=strcat('A',num2str(Row));
+                                writematrix('DFmax_norm (1/ms)',Outputfile,'Sheet','Characteristics_for_figs','Range',path_c);
+                                path_c=strcat('B',num2str(Row));
+                                normDFmax=max(DFup)/ampl_F;
+                                writematrix(normDFmax,Outputfile,'Sheet','Characteristics_for_figs','Range',path_c);
+                                Row=Row+1;
+                                
+                                for k=tFmax:t_beg(end)
+                                    DFdown(k)=vars(k+1)-vars(k);
+                                end
+                                path_c=strcat('A',num2str(Row));
+                                writematrix('DFmin (AFU/ms)',Outputfile,'Sheet','Characteristics_for_figs','Range',path_c);
+                                path_c=strcat('B',num2str(Row));
+                                writematrix(min(DFdown),Outputfile,'Sheet','Characteristics_for_figs','Range',path_c);
+                                Row=Row+1;
+                                path_c=strcat('A',num2str(Row));
+                                writematrix('DFmin_norm (1/ms)',Outputfile,'Sheet','Characteristics_for_figs','Range',path_c);
+                                path_c=strcat('B',num2str(Row));
+                                normDFmin=min(DFdown)/ampl_F;
+                                writematrix(normDFmin,Outputfile,'Sheet','Characteristics_for_figs','Range',path_c);
+                                Row=Row+1;
+                                                           
+                            end
+                            
+                            if selected(idx).Text=="Ca_i"
+                                
+                                path_c=strcat('A',num2str(Row));
+                                writematrix('==== Intracellular Calcium ====',Outputfile,'Sheet','Characteristics_for_figs','Range',path_c);
+                                Row=Row+1;
+                                
+                                path_c=strcat('A',num2str(Row));
+                                writematrix('Cai_max (mkM)',Outputfile,'Sheet','Characteristics_for_figs','Range',path_c);
+                                path_c=strcat('B',num2str(Row));
+                                writematrix(max(vars)*1000,Outputfile,'Sheet','Characteristics_for_figs','Range',path_c);
+                                Row=Row+1; 
+                                                             
+                                path_c=strcat('A',num2str(Row));
+                                writematrix('Cai_min (mKM)',Outputfile,'Sheet','Characteristics_for_figs','Range',path_c);
+                                path_c=strcat('B',num2str(Row));
+                                writematrix(vars(10)*1000,Outputfile,'Sheet','Characteristics_for_figs','Range',path_c);
+                                Row=Row+1; 
+                                
+                                path_c=strcat('A',num2str(Row));
+                                writematrix('Cai_ampl (mkM)',Outputfile,'Sheet','Characteristics_for_figs','Range',path_c);
+                                path_c=strcat('B',num2str(Row));
+                                ampl_Ca=max(vars)-vars(10);
+                                writematrix(ampl_Ca*1000,Outputfile,'Sheet','Characteristics_for_figs','Range',path_c);
+                                Row=Row+1;
+                                
+                                path_c=strcat('A',num2str(Row));
+                                writematrix('tCai_max (ms)',Outputfile,'Sheet','Characteristics_for_figs','Range',path_c);
+                                path_c=strcat('B',num2str(Row));
+                                tCamax=find(vars==max(vars))-10; %вычитаем стимул
+                                writematrix(tCamax,Outputfile,'Sheet','Characteristics_for_figs','Range',path_c);
+                                Row=Row+1;
+                                
+                                path_c=strcat('A',num2str(Row));
+                                writematrix('Cai_D10 (ms)',Outputfile,'Sheet','Characteristics_for_figs','Range',path_c);
+                                path_c=strcat('B',num2str(Row));
+                                Ca10=0.9*ampl_Ca+min(vars);
+                                Caup=find(vars>Ca10);
+                                CaD10=Caup(end)-(tCamax+10); %учитываем вычтенный из tFmax стимул
+                                writematrix(CaD10,Outputfile,'Sheet','Characteristics_for_figs','Range',path_c);
+                                Row=Row+1;
+                                
+                                path_c=strcat('A',num2str(Row));
+                                writematrix('Cai_D50 (ms)',Outputfile,'Sheet','Characteristics_for_figs','Range',path_c);
+                                path_c=strcat('B',num2str(Row));
+                                Ca50=0.5*ampl_Ca+min(vars);
+                                Caup=find(vars>Ca50);
+                                CaD50=Caup(end)-(tCamax+10); %учитываем вычтенный из tFmax стимул
+                                writematrix(CaD50,Outputfile,'Sheet','Characteristics_for_figs','Range',path_c);
+                                Row=Row+1;
+                                
+                                path_c=strcat('A',num2str(Row));
+                                writematrix('Cai_D70 (ms)',Outputfile,'Sheet','Characteristics_for_figs','Range',path_c);
+                                path_c=strcat('B',num2str(Row));
+                                Ca70=0.3*ampl_Ca+min(vars);
+                                Caup=find(vars>Ca70);
+                                CaD70=Caup(end)-(tCamax+10); %учитываем вычтенный из tFmax стимул
+                                writematrix(CaD70,Outputfile,'Sheet','Characteristics_for_figs','Range',path_c);
+                                Row=Row+1;
+                                
+                                path_c=strcat('A',num2str(Row));
+                                writematrix('Cai_D90 (ms)',Outputfile,'Sheet','Characteristics_for_figs','Range',path_c);
+                                path_c=strcat('B',num2str(Row));
+                                Ca90=0.1*ampl_Ca+min(vars);
+                                Caup=find(vars>Ca90);
+                                CaD90=Caup(end)-(tCamax+10); %учитываем вычтенный из tFmax стимул
+                                writematrix(CaD90,Outputfile,'Sheet','Characteristics_for_figs','Range',path_c);
+                                Row=Row+1;
+                                                            
+                            end
+                            
+                            if selected(idx).Text=="lcell"
+                                path_c=strcat('A',num2str(Row));
+                                writematrix('==== Total length ====',Outputfile,'Sheet','Characteristics_for_figs','Range',path_c);
+                                Row=Row+1;
+                                
+                                path_c=strcat('A',num2str(Row));
+                                writematrix('lcell (mkm)',Outputfile,'Sheet','Characteristics_for_figs','Range',path_c);
+                                path_c=strcat('B',num2str(Row));
+                                writematrix(vars(10),Outputfile,'Sheet','Characteristics_for_figs','Range',path_c);
+                                Row=Row+1; 
+                            end
+                            
+                             if selected(idx).Text=="Ca_jSR"
+                                path_c=strcat('A',num2str(Row));
+                                writematrix('==== Calcium in junctional SR (term. cist.) ====',Outputfile,'Sheet','Characteristics_for_figs','Range',path_c);
+                                Row=Row+1;
+                                
+                                path_c=strcat('A',num2str(Row));
+                                writematrix('CaJSR_diast (mM)',Outputfile,'Sheet','Characteristics_for_figs','Range',path_c);
+                                path_c=strcat('B',num2str(Row));
+                                writematrix(vars(10),Outputfile,'Sheet','Characteristics_for_figs','Range',path_c);
+                                Row=Row+1; 
+                                
+                                path_c=strcat('A',num2str(Row));
+                                writematrix('CaJSR_min (mM)',Outputfile,'Sheet','Characteristics_for_figs','Range',path_c);
+                                path_c=strcat('B',num2str(Row));
+                                writematrix(min(vars),Outputfile,'Sheet','Characteristics_for_figs','Range',path_c);
+                                Row=Row+1; 
+                                
+                                path_c=strcat('A',num2str(Row));
+                                writematrix('CaJSR_max (mM)',Outputfile,'Sheet','Characteristics_for_figs','Range',path_c);
+                                path_c=strcat('B',num2str(Row));
+                                writematrix(max(vars),Outputfile,'Sheet','Characteristics_for_figs','Range',path_c);
+                                Row=Row+1;
+                                                            
+                                path_c=strcat('A',num2str(Row));
+                                writematrix('CaJSR_ampl (mM)',Outputfile,'Sheet','Characteristics_for_figs','Range',path_c);
+                                path_c=strcat('B',num2str(Row));
+                                writematrix(max(vars)-min(vars),Outputfile,'Sheet','Characteristics_for_figs','Range',path_c);
+                                Row=Row+1; 
+                                
+                             end
+                             
+                             if selected(idx).Text=="Ca_nSR"
+                                path_c=strcat('A',num2str(Row));
+                                writematrix('==== Calcium in network SR (longit. retic.) ====',Outputfile,'Sheet','Characteristics_for_figs','Range',path_c);
+                                Row=Row+1;
+                                
+                                path_c=strcat('A',num2str(Row));
+                                writematrix('CaNSR_diast (mM)',Outputfile,'Sheet','Characteristics_for_figs','Range',path_c);
+                                path_c=strcat('B',num2str(Row));
+                                writematrix(vars(10),Outputfile,'Sheet','Characteristics_for_figs','Range',path_c);
+                                Row=Row+1; 
+                                
+                                path_c=strcat('A',num2str(Row));
+                                writematrix('CaNSR_min (mM)',Outputfile,'Sheet','Characteristics_for_figs','Range',path_c);
+                                path_c=strcat('B',num2str(Row));
+                                writematrix(min(vars),Outputfile,'Sheet','Characteristics_for_figs','Range',path_c);
+                                Row=Row+1; 
+                                
+                                path_c=strcat('A',num2str(Row));
+                                writematrix('CaNSR_max (mM)',Outputfile,'Sheet','Characteristics_for_figs','Range',path_c);
+                                path_c=strcat('B',num2str(Row));
+                                writematrix(max(vars),Outputfile,'Sheet','Characteristics_for_figs','Range',path_c);
+                                Row=Row+1; 
+                                
+                                path_c=strcat('A',num2str(Row));
+                                writematrix('CaNSR_ampl (mM)',Outputfile,'Sheet','Characteristics_for_figs','Range',path_c);
+                                path_c=strcat('B',num2str(Row));
+                                writematrix(max(vars)-min(vars),Outputfile,'Sheet','Characteristics_for_figs','Range',path_c);
+                                Row=Row+1; 
+                                
+                            end
+                            
+                             if selected(idx).Text=="N"
+                                path_c=strcat('A',num2str(Row));
+                                writematrix('==== Crossbridges ====',Outputfile,'Sheet','Characteristics_for_figs','Range',path_c);
+                                Row=Row+1;
+                            
+                                path_c=strcat('A',num2str(Row));
+                                writematrix('N_max',Outputfile,'Sheet','Characteristics_for_figs','Range',path_c);
+                                path_c=strcat('B',num2str(Row));
+                                writematrix(max(vars),Outputfile,'Sheet','Characteristics_for_figs','Range',path_c);
+                                Row=Row+1;
+                             end  
+                            end
+                         end 
+                         
+                        end
+                    end      
+                end
+            winopen(Outputfile); 
+            end 
+           app.Image.Visible=0;
+           drawnow; 
+        end
+
+        % Size changed function: FigPanel
+        function FigPanelSizeChanged(app, event)
+    
+        end
+
+        % Menu selected function: SaveallcyclesMenu
+        function SaveallcyclesMenuSelected(app, event)
+         global save_pname
+         global fname
+         global selected
+         global last_size_choice
+         global All_group_names
+         global num_grps
+         global All_dataset_name
+         global num_dts        
+         global InputFile
+         global time
+            
+             app.Image.Visible=1;
+             drawnow;
+         
+            TF=isempty (app.Struct_treedd.SelectedNodes);
+            if TF              
+               f = msgbox({'Invalid Selection';'No item to save is checked.'; ...
+                   'Please, use h5 file structure tree to select';...
+                   ' one or more items in Last cycle tab mode'}, 'Error','error');
+            else 
+                Columns=["B","C","D","E","F","G","H","I","J","K","L","M",...
+                   "N","O","P","Q","R","S","T","U","V","W","X","Y","Z"];
+             
+                save_pname=app.FolderMenu.Tooltip;
+                fname=app.FilesListBox.Value;
+                fname_short=fname(1:strfind(fname, ".h5")-1);
+                DateString=datestr(datetime('now'));             
+                dt = strrep(DateString,":","_");
+                dt = strrep(dt," ","_");
+                Outputfile_all=strcat(save_pname, 'All_cycles_for_',fname_short,'_',dt,'.xlsx');
+                           
+                if last_size_choice~=0
+                    time=h5read(InputFile,'/time');
+                    Value_t_large=strcat('A2:A',num2str(max(time)+2));
+                    writematrix('time (ms)',Outputfile_all,'Sheet','Data_for_figs_ALL','Range','A1');
+                    writematrix(time,Outputfile_all,'Sheet','Data_for_figs_ALL','Range',Value_t_large); 
+                end
+                
+                for idx=1:last_size_choice
+                    for i=1:num_grps
+                        for j=1:num_dts(i)
+                            if All_dataset_name(i,j)==selected(idx).Text
+                                if (All_group_names(i)=="variables") || (All_group_names(i)=="currents") || (All_group_names(i)=="forces")
+                                    path_dataset(i)=strcat('/',string(All_group_names(i)),'/',selected(idx).Text);
+                                    vars=h5read(InputFile,path_dataset(i));
+                                    Value_var_title=strcat(Columns(idx),'1');                                           
+                                    Value_var_large=strcat(Columns(idx),'2:',Columns(idx),num2str(max(time)+2));                              
+                                    writematrix(selected(idx).Text,Outputfile_all,'Sheet','Data_for_figs_ALL','Range',Value_var_title);                        
+                                    writematrix(vars,Outputfile_all,'Sheet','Data_for_figs_ALL','Range',Value_var_large);                         
+                                end
+                            end 
+                        end
+                    end      
+                end
+                
+            winopen(Outputfile_all); 
+            end
+            
+            app.Image.Visible=0;
+            drawnow;
+        end
+
+        % Value changed function: FilesListBox
+        function FilesListBoxValueChanged(app, event)
+         global full_path
+         global InputFile
+         global time
+         global cycle
+         global count_cycle
+         global start_stim
+         global Herz
+         global points_mod
+         global fname
+         global All_group_names
+         global num_grps
+         global All_dataset_name
+         global num_dts
+         global fid
+    
+              
+              
+              value = app.FilesListBox.Value;
+              Items = strtrim(app.FilesListBox.Items);
+              im = strtrim(value);
+              num_Files = find(strcmp(Items, im))  ;
+              fname=app.FilesListBox.Items(num_Files);
+              InputFile=full_path(num_Files);
+              fid = H5F.open(InputFile);
+              time=h5read(InputFile,'/time');
+              cycle=h5read(InputFile, '/parameters/stim_period');
+              start_stim=h5read(InputFile, '/parameters/stim_start');
+              count_cycle=idivide(max(int64(time)),int64(cycle));
+              Herz=1000/cycle;
+              points_mod=mod(max(int64(time)),int64(cycle));
+             
+              app.CycleLengthLabel.Text=strcat('Cycle Length: ',num2str(cycle));
+              app.FrequencyLabel.Text=strcat('Frequency (Hz): ',num2str(Herz,2));
+              app.NumbersofCyclesLabel.Text=strcat('Numbers of Cycles: ',num2str(count_cycle)); 
+                      
+              a=app.Struct_treedd.Children; 
+              a.delete;
+          
+              idx = 0;
+              while true
+                   Group_name = H5G.get_objname_by_idx(fid,idx);
+                   if isempty(Group_name)
+                    break
+                   end
+                   All_group_names{idx+1,1} = Group_name;  
+                   category_group(idx+1) = uitreenode(app.Struct_treedd,'Text',Group_name,'NodeData',[]);
+                   idx = idx+1;
+              end
+                        
+              num_grps = length(All_group_names);
+
+              All_dataset_name=strings;
+              for i=1:num_grps
+                   path_dataset(i)='/'+string(All_group_names(i));%+'/';
+                   idx=0;
+                   add_new=true;
+                   while add_new
+                     try
+                       Dataset_name=H5L.get_name_by_idx(fid,path_dataset(i),'H5_INDEX_NAME','H5_ITER_INC',idx,'H5P_DEFAULT');
+                     catch
+                       add_new=false;   
+                     end
+                     if add_new 
+                       All_dataset_name(i,idx+1)=Dataset_name;
+                       if All_group_names(i)=="parameters"
+                           Dataset_value=h5read(InputFile,strcat('/',string(All_group_names(i)),'/',Dataset_name));
+                           Dataset_name=strcat(Dataset_name, ':'," ",num2str(Dataset_value));
+                           parameters_index=i;
+                       end
+                       category_dataset(idx+1)=uitreenode(category_group(i),'Text',Dataset_name);
+                       idx=idx+1;
+                     end    
+                   end
+                   num_dts(i)=idx; %number datasets in each group
+              end 
+              app.CycleLengthLabel.Text=strcat('Cycle Length: ',num2str(cycle));
+              app.FrequencyLabel.Text=strcat('Frequency (Hz): ',num2str(Herz,2));
+              app.NumbersofCyclesLabel.Text=strcat('Numbers of Cycles: ',num2str(count_cycle));
+              
+             
+              
+        end
+
+        % Button pushed function: NewdataButton
+        function NewdataButtonPushed(app, event)
+         global InputFile
+         global time
+         global cycle
+         global Herz
+         global points_mod
+         global Dep_Names
+         global fname
+         global DataContainer
+         global sort_flag_int
+           
+            fname=app.FilesListBox.Value;
+            Dep_Values=matlab.lang.makeValidName(fname);
+            DepVal=char(Dep_Values); % variable name of new column
+            sort_flag_int=0;          
+            Tb=app.DepTable;
+           
+            if isempty(Tb.Data)
+              Dep_Names={'Frequency (Hz)'};
+              Cycle_name={'Cycle length (ms)';'Check point'};
+              APD_names={'V_max (mV)';'V_min (mV)';'V_ampl (mV)';'tV_max (ms)';'APD_20 (ms)';'APD_50 (ms)';'APD_90 (ms)'};
+              Length_names={'Lmuscle (mkm)';'l1_diast (mkm)';'l1_syst (mkm)';'l1_diff (mkm)'; 'l1_frac (%)'};
+              Force_names={'FXSE_max (AFU)'; 'FXSE_min (AFU)'; 'FXSE_ampl (AFU)'; 'tFXSE_max (ms)'; ...
+                  'FXSE_D50 (ms)'; 'FXSE_D70 (ms)'; 'FXSE_D90 (ms)';'DF_max (AFU/ms)'; 'DF_max(norm) (1/ms)';...
+                  'DF_min (AFU/ms)';'DF_min(norm) (1/ms)'};
+              Cai_names={'Cai_max (mkM)'; 'Cai_min (mkM)'; 'Cai_ampl (mkM)'; 'tCai_max (ms)'; 'Cai_D10 (ms)';...
+                  'Cai_D50 (ms)'; 'Cai_D70 (ms)'; 'Cai_D90 (ms)'};
+              %L_name={'lcell (mkm)'}; %add to Dep_Names before CaJSR_names if it is used
+              CaJSR_names={'CaJSR_diast (mM)'; 'CaJSR_max (mM)';'CaJSR_min (mM)'; 'CaJSR_ampl (mM)'};
+              CaNSR_names={'CaNSR_diast (mM)'; 'CaNSR_max (mM)';'CaNSR_min (mM)'; 'CaNSR_ampl (mM)'};
+              N_name={'N_max (fraction)'};
+              Dep_Names=vertcat(Dep_Names,Cycle_name,APD_names, Length_names, Force_names, Cai_names, CaJSR_names,CaNSR_names, N_name);
+              Tb.ColumnName={'Characteristics'};
+              Tb.ColumnWidth={160};
+              Tb.Data=[Tb.Data cell2table(Dep_Names, 'VariableNames', {'Characteristics'})];
+                        
+              app.SortdataonHzButton.Enable=1;
+              app.SortdataonCLButton.Enable=1;
+              app.SavetabletoXLSButton.Enable=1;
+              app.CharacteristicsDropDown.Items=Dep_Names(3:end);
+              app.XAxisDropDown.Items=Dep_Names(1:2);
+              app.DrawchartButton.Enable=1;
+              app.DelColDropDown.Enable=1;
+              app.DelColDropDown.Items={};
+              app.DelColButton.Enable=1;
+            end
+           
+            app.NewdataButton.Text='Add data' ;
+            exColumnNames=transpose(Tb.ColumnName);
+             
+            newColumnName=char(fname);
+            %if ismember (fname{1}, exColumnNames)
+            if ismember (fname, exColumnNames)
+                uialert(app.MainUIFigure,'Data is already in the table','Existing Data');
+            else
+                app.DelColDropDown.Items=[app.DelColDropDown.Items, {newColumnName}];    
+                Tb.ColumnName= [exColumnNames, {newColumnName}];
+           
+                exColumnWidth=Tb.ColumnWidth;
+                newColumnWidth={80};
+                Tb.ColumnWidth=[exColumnWidth,  newColumnWidth];
+                valuesToAdd = double([]);
+                valuesToAdd=[double(Herz)];
+                
+                t=time((max(time)+1-cycle-points_mod):(max(time)+1-points_mod));
+                t_beg=time(1:cycle+1);
+                
+                valuesToAdd=[valuesToAdd;double(cycle);t(1)];
+             
+          
+                vars=h5read(InputFile,'/variables/V',t(1),double(cycle+1));
+                ampl_v=max(vars)-min(vars);
+                tVmax=find(vars==max(vars))-10;
+                V20=0.8*ampl_v+min(vars);
+                Vup=find(vars>V20);
+                APD20=Vup(end)-(tVmax+10);
+                V50=0.5*ampl_v+min(vars);
+                Vup=find(vars>V50);
+                APD50=Vup(end)-(tVmax+10);
+                V90=0.1*ampl_v+min(vars);
+                Vup=find(vars>V90);
+                APD90=Vup(end)-(tVmax+10);
+               
+                APD_values=[max(vars); min(vars); ampl_v; tVmax; APD20; APD50; APD90];
+                valuesToAdd=[valuesToAdd;APD_values];
+                
+                Lmuscle=h5read(InputFile,'/variables/l_2',t(1),1)+h5read(InputFile,'/variables/l_3',t(1),1)+1.67;
+                vars=h5read(InputFile,'/variables/l_1',t(1),double(cycle+1));
+                l1_diast=max(vars);
+                l1_syst=min(vars);
+                l1_diff=l1_diast-l1_syst;
+                l1_frac=100-(l1_diff+1.67)/(l1_diast+1.67)*100;
+                
+                Length_Values=[Lmuscle; l1_diast; l1_syst; l1_diff; l1_frac];
+                valuesToAdd=[valuesToAdd;Length_Values];
+                
+                vars=h5read(InputFile,'/forces/F_XSE',t(1),double(cycle+1));
+                ampl_F=max(vars)-vars(10);
+                tFmax=find(vars==max(vars))-10; 
+              
+                if tFmax>10
+                    F50=0.5*ampl_F+min(vars);
+                    Fup=find(vars>F50);
+                    FXSE_D50=Fup(end)-(tFmax+10);
+                    F70=0.3*ampl_F+min(vars);
+                    Fup=find(vars>F70);
+                    FXSE_D70=Fup(end)-(tFmax+10);
+                    F90=0.1*ampl_F+min(vars);
+                    Fup=find(vars>F90);
+                    FXSE_D90=Fup(end)-(tFmax+10);
+                    for k=t_beg(10):tFmax
+                       DFup(k)=vars(k)-vars(k-1);
+                    end
+                    DFupmax=max(DFup);
+                    normDFmax=DFupmax/ampl_F;
+                    for k=tFmax:t_beg(end)
+                       DFdown(k)=vars(k+1)-vars(k);
+                    end
+                    DFdownmin=min(DFdown);
+                    normDFmin= DFdownmin/ampl_F;
+                 else
+                     FXSE_D50=0;
+                     FXSE_D50=0;
+                     FXSE_D70=0;
+                     FXSE_D90=0;
+                     DFupmax=0;
+                     DFdownmin=0;
+                     normDFmax=0;
+                     normDFmin=0;
+                 end
+              
+                Force_Values=[max(vars); min(vars); ampl_F; tFmax; FXSE_D50; FXSE_D70; FXSE_D90; DFupmax; normDFmax;  DFdownmin; normDFmin];
+                valuesToAdd=[valuesToAdd;Force_Values];
+             
+                vars=h5read(InputFile,'/variables/Ca_i',t(1),double(cycle+1));
+                ampl_Ca=max(vars)-vars(10);
+                tCamax=find(vars==max(vars))-10;
+                Ca10=0.9*ampl_Ca+min(vars);
+                Caup=find(vars>Ca10);
+                CaD10=Caup(end)-(tCamax+10);
+                
+                Ca50=0.5*ampl_Ca+min(vars);
+                Caup=find(vars>Ca50);
+                CaD50=Caup(end)-(tCamax+10);
+                        
+                Ca70=0.3*ampl_Ca+min(vars);
+                Caup=find(vars>Ca70);
+                CaD70=Caup(end)-(tCamax+10);
+              
+                Ca90=0.1*ampl_Ca+min(vars);
+                Caup=find(vars>Ca90);
+                CaD90=Caup(end)-(tCamax+10);
+                
+                Cai_Values=[max(vars)*1000; vars(10)*1000; ampl_Ca*1000; tCamax; CaD10; CaD50; CaD70; CaD90 ];
+                valuesToAdd=[valuesToAdd;Cai_Values];
+
+                %vars=h5read(InputFile,'/forces/lcell',t(1),double(cycle+1));
+                %L_Value=[vars(10)];
+                %valuesToAdd=[valuesToAdd,L_Value];
+               
+                vars=h5read(InputFile,'/variables/Ca_jSR',t(1),double(cycle+1));
+                CaJSR_Values=[vars(10); min(vars);max(vars);max(vars)-min(vars)]; 
+                valuesToAdd=[valuesToAdd;CaJSR_Values];
+                
+                vars=h5read(InputFile,'/variables/Ca_nSR',t(1),double(cycle+1));
+                CaNSR_Values=[vars(10); min(vars);max(vars);max(vars)-min(vars)]; 
+                valuesToAdd=[valuesToAdd;CaNSR_Values];
+               
+                vars=h5read(InputFile,'/variables/N',t(1),double(cycle+1));
+                N_Value=[max(vars)];
+                valuesToAdd=[valuesToAdd;N_Value];
+                 
+                DataContainer=struct(DepVal,valuesToAdd);          
+                Tb.Data=[Tb.Data array2table(DataContainer.(DepVal), 'VariableNames', {DepVal})];    
+            end
+        end
+
+        % Button pushed function: SortdataonHzButton
+        function SortdataonHzButtonPushed(app, event)
+         global sort_flag_dep
+         
+            if sort_flag_dep~=0
+                cell_style = uistyle('BackgroundColor',[1 1 1]);
+                addStyle(app.DepTable,cell_style,'row',[sort_flag_dep]);
+            end
+            rowXIndex=1;
+            SortTable(app, app.DepTable, rowXIndex);
+            sort_flag_dep=rowXIndex;
+        end
+
+        % Button pushed function: SavetabletoXLSButton
+        function SavetabletoXLSButtonPushed(app, event)
+             
+            SavetabletoXLS(app, app.DepTable, 'Dependencies_%s.xlsx')
+           
+        end
+
+        % Button pushed function: DrawchartButton
+        function DrawchartButtonPushed(app, event)
+         global sort_flag_dep
+       
+            sort_flag_dep=DrawChart (app, app.DepAxes, app.CharacteristicsDropDown, app.XAxisDropDown, ...
+                app.DepTable, app.TableResortedLabel, sort_flag_dep);
+            
+        end
+
+        % Button pushed function: SortdataonCLButton
+        function SortdataonCLButtonPushed(app, event)
+         global sort_flag_dep
+      
+            if sort_flag_dep~=0
+                cell_style = uistyle('BackgroundColor',[1 1 1]);
+                addStyle(app.DepTable,cell_style,'row',[sort_flag_dep]);
+            end
+            rowXIndex=2;
+            SortTable(app, app.DepTable, rowXIndex); 
+            sort_flag_dep=rowXIndex;
+        end
+
+        % Button pushed function: DelColButton
+        function DelColButtonPushed(app, event)
+           
+            DelCol(app, app.DepTable, app.DelColDropDown);
+            if isempty(app.DelColDropDown.Items)
+              app.DelColDropDown.Enable=0;
+              app.SortdataonHzButton.Enable=0;
+              app.SortdataonCLButton.Enable=0;
+              app.SavetabletoXLSButton.Enable=0;
+              app.DrawchartButton.Enable=0;
+              app.DelColButton.Enable=0;
+              app.NewdataButton.Text='New data';
+           end    
+        end
+
+        % Button pushed function: NewIntDataButton
+        function NewIntDataButtonPushed(app, event)
+         global InputFile
+         global time
+         global cycle
+         global Herz
+         global points_mod
+         global Dep_Names
+         global fname
+         global DataContainer
+         global sort_flag_dep
+            
+             function Integral = Int (Current, coefficient)
+                     Integral=0;
+                     for h=1:cycle+1
+                       Integral=Integral+Current(h)*ht*coefficient;
+                     end   
+             end
+            fname=app.FilesListBox.Value;
+            Int_Values=matlab.lang.makeValidName(fname);
+            IntVal=char(Int_Values); % variable name of new column
+            sort_flag_dep=0;          
+            Tb=app.IntTable;
+           
+            if isempty(Tb.Data)
+              Dep_Names={'Frequency (Hz)'};
+              Cycle_name={'Cycle length (ms)'};
+              CaInt_names={'Int{i_relSR} (mM)';'Int{i_relcyt} (mM)';'Int{i_leak} (mM)'; 'Int{i_up} (mM)';'Int{i_xfercyt} (mM)'; ...
+                  'Int{i_bCa} (mM)';'Int{i_pCa} (mM)'; ...
+                  'Int{i_NaCain} (mM)'; 'Int{i_NaCaout} (mM)'; 'Int{i_NaCatotal} (mM)'; 'Int{i_CaLcyt} (mM)';...
+                  'Int{CaTnC} (mM)'; 'Int{Buffc} (mM)'; 'Int{Cain_total} (mM)'; 'Int{Caout_total} (mM)'; ...
+                  'Int{i_CaLSS} (mM)'; 'Int{i_relSS} (mM)'; 'Int{i_xferSS} (mM)';'Int{CainSS_total} (mM)'; 'Int{CaoutSS_total} (mM)' };
+             
+              Dep_Names=vertcat(Dep_Names,Cycle_name,CaInt_names);
+              Tb.ColumnName={'Integrals'};
+              Tb.ColumnWidth={160};
+              Tb.Data=[Tb.Data cell2table(Dep_Names, 'VariableNames', {'Integrals'})];
+                        
+              app.SortIntdataonHzButton.Enable=1;
+              app.SortIntdataonCLButton.Enable=1;
+              app.SaveInttabletoXLSButton.Enable=1;
+              app.IntegralsDropDown.Items=Dep_Names(3:end);
+              app.XAxisIntDropDown.Items=Dep_Names(1:2);
+              app.DrawIntchartButton.Enable=1;
+              app.DelColIntDropDown.Enable=1;
+              app.DelColIntDropDown.Items={};
+              app.DelColIntButton.Enable=1;
+            end
+
+            app.NewIntDataButton.Text='Add data' ;
+            exColumnNames=transpose(Tb.ColumnName);
+             
+            newColumnName=char(fname);
+            %if ismember (fname{1}, exColumnNames)
+            if ismember (fname, exColumnNames)
+               uialert(app.MainUIFigure,'Data is already in the table','Existing Data');
+            else            
+               app.DelColIntDropDown.Items=[app.DelColIntDropDown.Items, {newColumnName}];    
+               Tb.ColumnName= [exColumnNames, {newColumnName}];
+               
+               exColumnWidth=Tb.ColumnWidth;
+               newColumnWidth={80};
+               Tb.ColumnWidth=[exColumnWidth,  newColumnWidth];
+               valuesToAdd=([]);
+               valuesToAdd=[double(Herz)];
+                
+               t=time((max(time)+1-cycle-points_mod):(max(time)+1-points_mod));
+               t_beg=time(1:cycle+1);
+               ht=t_beg(2)-t_beg(1);
+             
+               valuesToAdd=[valuesToAdd;double(cycle)];
+                
+               VjSR=h5read(InputFile,'/parameters/V_jSR');
+               Vc=h5read(InputFile,'/parameters/V_c');
+               VnSR=h5read(InputFile,'/parameters/V_nSR');
+               Vss=h5read(InputFile,'/parameters/V_ss');
+               FF=h5read(InputFile,'/parameters/F');
+               CC=h5read(InputFile,'/parameters/Cm');
+               Kbuffc=h5read(InputFile,'/parameters/K_buf_c');
+               BuffC=h5read(InputFile,'/parameters/Buf_c');
+            
+               irel=h5read(InputFile,'/currents/i_rel',t(1),double(cycle+1));
+               % 'Int{i_relSR} (mM)','Int{i_relcyt} (mM)' 'Int{i_relSS} (mM)',
+               IntIrelSR=Int(irel,1);
+               IntIrelcyt=Int(irel,VjSR/Vc);
+               IntIrelSS=Int(irel,VjSR/Vss);
+               
+               ileak=h5read(InputFile,'/currents/i_leak',t(1),double(cycle+1));
+               %'Int{i_leak} (mM)';
+               IntIleak=Int(ileak,1);
+                            
+               iup=h5read(InputFile,'/currents/i_up',t(1),double(cycle+1));
+               %'Int{i_up} (mM)'
+               IntIup=Int(iup,1);
+                
+               ixfer=h5read(InputFile,'/currents/i_xfer',t(1),double(cycle+1));
+               %ixfer=0;
+               %'Int{i_xfercyt} (mM)''Int{i_xferSS} (mM)',
+               %IntIxfercyt=0;
+               IntIxfercyt=Int(ixfer,1);
+               %IntIxferSS=0;
+               IntIxferSS=Int(ixfer,Vc/Vss);
+                
+               ibCa=h5read(InputFile,'/currents/i_b_Ca',t(1),double(cycle+1));
+               %ibCa=0;
+               %'Int{i_bCa} (mM)',
+               %IntIbCa=0;
+               IntIbCa=Int(ibCa,CC/(2*Vc*FF));
+                
+               ipCa=h5read(InputFile,'/currents/i_p_Ca',t(1),double(cycle+1));
+               %ipCa=0;
+               %'Int{i_pCa} (mM)',
+               %IntIpCa=0; 
+               IntIpCa=Int(ipCa,CC/(2*Vc*FF));
+            
+                
+               iNaCa=h5read(InputFile,'/currents/i_NaCa',t(1),double(cycle+1));
+               %'Int{i_NaCain} (mM)', 'Int{i_NaCaout} (mM)', 'Int{i_NaCatotal} (mM)',
+               IntINaCain=0;
+               IntINaCaout=0;
+               IntINaCatotal=0;
+               for k=1:cycle+1
+                if iNaCa(k)<0
+                  IntINaCaout=IntINaCaout+iNaCa(k)*ht*CC/(Vc*FF)*ht;
+                end
+                if iNaCa(k)>0
+                  IntINaCain=IntINaCain+iNaCa(k)*ht*CC/(Vc*FF)*ht;
+                end
+                IntINaCatotal=IntINaCatotal+iNaCa(k)*ht*CC/(Vc*FF)*ht;
+               end  
+            
+               iCaL=h5read(InputFile,'/currents/i_CaL',t(1),double(cycle+1));
+               %'Int{i_CaLcyt} (mM)''Int{i_CaLSS} (mM)',
+               IntICaLcyt=Int(iCaL,CC/(2*Vc*FF));
+               IntICaLSS=Int(iCaL,CC/(2*Vss*FF));
+               
+               CaTnC=h5read(InputFile,'/variables/A',t(1),double(cycle+1));
+                %dA/dt
+               for j=2:cycle+1
+                   dCaTnC(j)=(CaTnC(j)-CaTnC(j-1))/ht;
+               end
+               dCaTnC(1)=0;
+               %'Int{CaTnC} (mM)', 
+               IntICaTnc=Int(dCaTnC,1);
+                
+               Cai=h5read(InputFile,'/variables/Ca_i',t(1),double(cycle+1));
+               %dCai/dt
+               for j=2:cycle+1
+                     dCai(j)=(Cai(j)-Cai(j-1))/ht;
+               end
+               dCai(1)=0;
+               %'Int{Buffc} (mM)',
+               IntBuffc=0;
+               for i=1:cycle+1
+                     IntBuffc=IntBuffc+Kbuffc*BuffC/(Cai(i)+Kbuffc)*dCai(i)*ht;
+               end
+                
+                %'Int{Cain_total} (mM)', 'Int{Caout_total} (mM)', 
+                IntCain=-IntICaLcyt+IntINaCain-IntIbCa;
+                IntCaout=-IntIpCa+IntINaCaout;
+                 
+                %Int{CainSS_total} (mM)', 'Int{CaoutSS_total} (mM)'
+                IntCainSS=-IntICaLSS+IntIrelSS;
+                IntCaoutSS=-IntIxferSS;
+
+                valuesToAdd=[valuesToAdd; IntIrelSR; IntIrelcyt; IntIleak; IntIup; IntIxfercyt;  IntIbCa; IntIpCa; ... 
+                    IntINaCain;  IntINaCaout;  IntINaCatotal; IntICaLcyt; ...
+                    IntICaTnc; IntBuffc;  IntCain; IntCaout; ...
+                    IntICaLSS; IntIrelSS; IntIxferSS; IntCainSS; IntCaoutSS]; 
+                
+                DataContainer=struct(IntVal,valuesToAdd);
+               
+                Tb.Data=[Tb.Data array2table(DataContainer.(IntVal), 'VariableNames', {IntVal})];     
+            end    
+        end
+
+        % Button pushed function: SortIntdataonHzButton
+        function SortIntdataonHzButtonPushed(app, event)
+         global sort_flag_int
+         
+            if sort_flag_int~=0
+                cell_style = uistyle('BackgroundColor',[1 1 1]);
+                addStyle(app.IntTable,cell_style,'row',[sort_flag_int]);
+            end
+            rowXIndex=1;
+            SortTable(app, app.IntTable, rowXIndex);
+            sort_flag_int=rowXIndex;
+        end
+
+        % Button pushed function: SaveInttabletoXLSButton
+        function SaveInttabletoXLSButtonPushed(app, event)
+         
+            SavetabletoXLS(app, app.IntTable, 'Integrals_%s.xlsx')          
+            
+        end
+
+        % Button pushed function: SortIntdataonCLButton
+        function SortIntdataonCLButtonPushed(app, event)
+         global sort_flag_int
+         
+            if sort_flag_int~=0
+                cell_style = uistyle('BackgroundColor',[1 1 1]);
+                addStyle(app.IntTable,cell_style,'row',[sort_flag_int]);
+            end
+            rowXIndex=2;
+            SortTable(app, app.IntTable, rowXIndex); 
+            sort_flag_int=rowXIndex;
+        end
+
+        % Button pushed function: DelColIntButton
+        function DelColIntButtonPushed(app, event)
+            
+            DelCol(app, app.IntTable, app.DelColIntDropDown);
+            if isempty(app.DelColIntDropDown.Items)
+                  app.DelColIntDropDown.Enable=0;
+                  app.SortIntdataonHzButton.Enable=0;
+                  app.SortIntdataonCLButton.Enable=0;
+                  app.SaveInttabletoXLSButton.Enable=0;
+                  app.DrawIntchartButton.Enable=0;
+                  app.DelColIntButton.Enable=0;
+                  app.NewIntDataButton.Text='New data';
+            end
+        end
+
+        % Button pushed function: DrawIntchartButton
+        function DrawIntchartButtonPushed(app, event)
+         global sort_flag_int
+       
+            sort_flag_int=DrawChart (app, app.IntAxes, app.IntegralsDropDown, app.XAxisIntDropDown, app.IntTable, ...
+                app.TableIntResortedLabel, sort_flag_int);           
+        end
+
+        % Value changed function: modeSwitch
+        function modeSwitchValueChanged(app, event)
+
+            value = app.modeSwitch.Value;
+               if value=="Multiple"
+                hold(app.UIAxes, 'on'); %for the 1st tab
+               % if app.CheckStimulBox.Value==1
+               %     if ~isempty(app.UIAxes.Children)
+               %        delete(app.UIAxes.Children(1)); % удаляем самый верхний (последний добавленный) объект
+               %     end
+               % end
+               % app.CheckStimulBox.Value=0;
+               % app.CheckStimulBox.Enable=0;
+                
+            else
+                hold(app.UIAxes, 'off'); %for the 1st tab   
+              %  app.CheckStimulBox.Enable=1;
+               end    
+        end
+
+        % Button pushed function: DelListButton
+        function DelListButtonPushed(app, event)
+            global n_files
+            global full_path
+            
+              % Проверяем, есть ли выделенный элемент
+                if ~isempty(app.FilesListBox.Value)
+                    % Запоминаем текущий индекс выделенного элемента
+                    currentIdx = find(strcmp(app.FilesListBox.Items, app.FilesListBox.Value));
+                    
+                    % Удаляем выбранный элемент из списка
+                    app.FilesListBox.Items(currentIdx) = [];
+                    
+                    % Если используем ItemsData
+                    if ~isempty(app.FilesListBox.ItemsData)
+                        app.FilesListBox.ItemsData(currentIdx) = [];
+                    end
+                    
+                    full_path(currentIdx)=[];
+                    n_files=n_files-1;
+                    
+                    
+                    % Определяем новый элемент для выбора (логика выбора следующего/предыдущего)
+                    if ~isempty(app.FilesListBox.Items)
+                        
+                        % Если удалили не последний элемент - выбираем следующий
+                        if currentIdx <= numel(app.FilesListBox.Items)
+                            newSelection = app.FilesListBox.Items{currentIdx};
+                        else
+                            % Если удалили последний - выбираем предыдущий
+                            newSelection = app.FilesListBox.Items{end};
+                        end
+                        
+                        app.FilesListBox.Value = newSelection;
+                         % Вызываем обработчик изменения выбора (он сам обновит дерево)
+                        FilesListBoxValueChanged(app, event);
+                    else
+                        % Если список стал пустым - сбрасываем выделение
+                        app.FilesListBox.Value = {};
+                        % Проверяем, есть ли узлы
+                        if ~isempty(app.Struct_treedd.Children)
+                            % Удаляем все корневые узлы (и их потомки автоматически)
+                            delete(app.Struct_treedd.Children);
+                            
+                            % Альтернатива: app.Struct_treedd.Children = [];
+                        end
+                        
+                        % Обновляем состояние дерева
+                        drawnow;  % Для немедленного отображения изменений
+                       
+                        app.CycleLengthLabel.Text=strcat('Cycle Length: ');
+                        app.FrequencyLabel.Text=strcat('Frequency (Hz): ');
+                        app.NumbersofCyclesLabel.Text=strcat('Numbers of Cycles: ');
+                    end
+                    
+                   
+                    
+                    % Обновляем состояние кнопки Delete
+                     app.DelListButton.Enable = ~isempty(app.FilesListBox.Items);
+                end
+        end
+
+        % Button pushed function: ClearChartButton
+        function ClearChartButtonPushed(app, event)
+                  % Запоминаем текущие настройки
+                gridState = app.UIAxes.XGrid;
+                color = app.UIAxes.Color;
+                
+                % Очищаем только графические объекты
+                delete(app.UIAxes.Children);
+                %app.UIAxes.Title.String='';
+                
+                % Восстанавливаем настройки
+                app.UIAxes.XGrid = gridState;
+                app.UIAxes.YGrid = gridState;
+                app.UIAxes.Color = color;
+                
+                app.DropDown.Enable=0;
+                app.DropDown.Items="NA";
+                app.SeriesclearButton.Enable=0;
+               % app.CheckStimulBox.Enable=0;
+                app.CheckStimulBox.Value=0;
+                app.ClearChartButton.Enable=0;
+
+        end
+
+        % Button pushed function: SeriesclearButton
+        function SeriesclearButtonPushed(app, event)
+             % 1. Получаем выбранную серию из DropDown
+                 selectedSeriesName = app.DropDown.Value; % Имя (если Items = {'Series1', 'Series2'})
+              % selectedSeriesObj = app.SeriesSelectorDropDown.Value; % Объект line (если ItemsData содержит line-объекты)
+                 if selectedSeriesName=="Stimuli"
+                  app.CheckStimulBox.Value=0;   
+                 end
+               % 2. Находим линию на графике по имени
+                lines = findobj(app.UIAxes, 'Type', 'line');
+                lineToDelete = [];
+    
+                for i = 1:length(lines)
+                    if strcmp(lines(i).DisplayName, selectedSeriesName)
+                        lineToDelete = lines(i);
+                        break;
+                    end
+                end
+
+                % 3. Если линия найдена — удаляем её
+                if ~isempty(lineToDelete) && isvalid(lineToDelete)
+                    delete(lineToDelete); % Удаляем с графика
+                   
+        
+                 % 4. Обновляем DropDown (если он не обновляется автоматически)
+                    updateSeriesDropdown(app); % (см. функцию ниже)
+                else
+                    uialert(app.MainUIFigure, 'Серия не найдена или уже удалена', 'Ошибка');
+                end
+        end
+
+        % Menu selected function: SavechartstoXLSMenu
+        function SavechartstoXLSMenuSelected(app, event)
+        global save_pname    
+         
+       save_pname=app.FolderMenu.Tooltip; 
+        
+       if app.TabGroup.SelectedTab==app.AllcyclesTab
+        
+        app.Image.Visible=1;
+        drawnow;
+           % 1. Получаем все линии с графика
+           lines = findobj(app.UIAxes, 'Type', 'line');
+           
+           % 2. Проверяем, есть ли данные для сохранения
+           if isempty(lines)
+               uialert(app.MainUIFigure, 'Нет данных для сохранения!', 'Ошибка');
+               app.Image.Visible=0;
+               drawnow;
+               return;
+           end
+         
+                DateString=datestr(datetime('now'));             
+                dt = strrep(DateString,":","_");
+                dt = strrep(dt," ","_");
+                filename=strcat('Charts on_',dt,'.xlsx');
+
+           % 5. Формируем полный путь к файлу
+           fullpath = fullfile(save_pname, filename);
+           
+           % 6. Создаём таблицу для данных и легенду
+           dataTable = table();
+           legendTable = table();
+           
+           % 7. Заполняем таблицу данными и легенду
+           for i = 1:length(lines)
+               line = lines(i);
+               
+               % Формируем стандартные имена столбцов
+               columnNameX = sprintf('Chart%d_X', i);
+               columnNameY = sprintf('Chart%d_Y', i);
+               
+               % Если линии разной длины — дополняем NaN
+               maxLen = max(length(line.XData), length(line.YData));
+               xData = [line.XData, NaN(1, maxLen - length(line.XData))];
+               yData = [line.YData, NaN(1, maxLen - length(line.YData))];
+               
+               % Добавляем данные в таблицу
+               dataTable.(columnNameX) = xData(:);
+               dataTable.(columnNameY) = yData(:);
+               
+               % Заполняем легенду
+               legendTable.ChartNumber(i) = i;
+               legendTable.OriginalName{i} = line.DisplayName;
+               legendTable.Color{i} = mat2str(line.Color);
+               legendTable.LineStyle{i} = line.LineStyle;
+               legendTable.LineWidth(i) = line.LineWidth;
+               legendTable.Marker{i} = line.Marker;
+           end
+           
+           % 8. Сохраняем таблицы в Excel
+           try
+               writetable(dataTable, fullpath, 'Sheet', 'Data');
+               writetable(legendTable, fullpath, 'Sheet', 'Legend');
+               
+               disp(['Данные сохранены в файл: ' fullpath]);
+               uialert(app.MainUIFigure, 'Данные успешно сохранены!', 'Готово');
+           catch ME
+               disp(['Ошибка сохранения: ' ME.message]);
+               uialert(app.MainUIFigure, 'Ошибка при сохранении файла!', 'Ошибка');
+           end
+           app.Image.Visible=0;
+           drawnow;
+       end
+       
+        if app.TabGroup.SelectedTab==app.LastcycleTab
+            
+          app.Image.Visible=1;
+          drawnow;  
+          lines_chart = cell(1,8); 
+          
+          for idx=1:8
+            lines_chart{idx} = findobj(app.ax(idx), 'Type', 'line');    
+          end
+          
+            DateString=datestr(datetime('now'));             
+            dt = strrep(DateString,":","_");
+            dt = strrep(dt," ","_");
+            filename=strcat('Charts_on_',dt,'.xlsx');
+          
+            % 5. Формируем полный путь к файлу
+           fullpath = fullfile(save_pname, filename);
+           
+           % 6. Создаём таблицу для данных и легенду
+           dataTable = cell(1, 7);
+           for idx=1:7
+           dataTable{idx} = table();
+           end
+           
+        
+            % 1. Явно создаём легенду (если ещё не создана)
+            if isempty(app.ax(8).Legend)
+                legend(app.ax(8), 'show');
+            end
+            
+            % 2. Получаем все объекты с DisplayName
+            lines = findobj(app.ax(8), 'Type', 'line', '-property', 'DisplayName');
+            
+            % 3. Собираем все имена
+            legend_names = {};
+            for i = 1:length(lines)
+                if ~isempty(lines(i).DisplayName)
+                    legend_names{end+1} = lines(i).DisplayName;
+                end
+            end
+            
+            % 4. Создаём таблицу
+            if ~isempty(legend_names)
+                legend_table = table(...
+                    (1:length(legend_names))', ...
+                    legend_names(:), ...
+                    'VariableNames', {'Index', 'SeriesName'});
+            else
+                legend_table = table();
+                warning('Не найдено рядов с DisplayName');
+            end
+
+
+
+           
+            for idx = 1:7
+            currentLines = lines_chart{idx}; % Достаём массив линий из ячейки
+            if ~isempty(lines_chart{idx})
+                
+            % Создаём временную таблицу для текущего графика
+            tempTable = table();
+           
+            
+            % Перебираем все линии на текущем графике
+                    for lineNum = 1:length(currentLines)
+                        lineObj = currentLines(lineNum); % Объект линии
+                        
+                        % Получаем XData и YData
+                        xData = get(lineObj, 'XData');
+                        yData = get(lineObj, 'YData');
+                        
+                        % Find the maximum length among all lines
+                        maxLength = max(cellfun(@length, {currentLines.XData}));
+
+                        % Формируем имена столбцов
+                        columnNameX = 'time (ms)'; 
+                        columnNameY = sprintf('=Legend!B%d', lineNum+1);
+                        
+                        % Pad with NaN if needed
+                        if length(xData) < maxLength
+                            xData(end+1:maxLength) = NaN;
+                            yData(end+1:maxLength) = NaN;
+                        end    
+                        
+                        % Записываем данные в таблицу
+                        tempTable.(columnNameX) = xData(:);
+                        tempTable.(columnNameY) = yData(:);
+                    end
+                   % Сохраняем таблицу в dataTable
+            dataTable{idx} = tempTable;
+            end 
+            end
+           % 7. Сохраняем данные в Excel
+            try
+                for idx = 1:7
+                if ~isempty(lines_chart{idx})    
+                    sheetName = app.ax(idx).Title.String; % Имя листа = название графика
+                    writetable(dataTable{idx}, fullpath, 'Sheet', sheetName);
+                end    
+                end
+                
+                % Сохраняем легенду, если она есть
+                if ~isempty(legend_table)
+                    hint_row = table(NaN, {'Hint: to update formulas in the workbook, use Find & Replace (Ctrl+H) to replace = with ='}, 'VariableNames', legend_table.Properties.VariableNames);
+                    empty_row = table(NaN, {''}, 'VariableNames', legend_table.Properties.VariableNames);
+                    legend_table_with_hint = [legend_table; empty_row; hint_row];
+                    writetable(legend_table_with_hint, fullpath, 'Sheet', 'Legend');
+                end
+                
+                disp(['Данные сохранены в файл: ' fullpath]);
+                uialert(app.MainUIFigure, 'Данные успешно сохранены!', 'Готово');
+            catch ME
+                disp(['Ошибка сохранения: ' ME.message]);
+                uialert(app.MainUIFigure, 'Ошибка при сохранении файла!', 'Ошибка');
+            end
+           app.Image.Visible=0;
+           drawnow;
+           
+           
+           
+        end
+        end
+
+        % Button pushed function: AddlinesButton
+        function AddlinesButtonPushed(app, event)
+            global size_choice
+            global text_selected
+            global InputFile
+            global cycle
+            global points_mod
+            global Group_selected
+            
+             title_selected_file=strrep(app.FilesListBox.Value,'_', ' ');
+             legend_name=strcat(title_selected_file);
+             
+             
+              % 1. Явно создаём легенду (если ещё не создана)
+            if isempty(app.ax(8).Legend)
+                legend(app.ax(8), 'show');
+            end
+            
+            % 2. Получаем все объекты с DisplayName
+            lines = findobj(app.ax(8), 'Type', 'line', '-property', 'DisplayName');
+            
+            % 3. Собираем все имена
+            legend_names = {};
+            for i = 1:length(lines)
+                if ~isempty(lines(i).DisplayName)
+                    legend_names{end+1} = lines(i).DisplayName;
+                end
+            end
+             
+            if ismember(legend_name, legend_names)
+                disp(['Ряд "' legend_name '" уже существует']);
+                uialert(app.MainUIFigure, 'Ряд уже существует!', 'Ошибка');
+                % Действия если имя уже существует
+            else
+             for idx=1:size_choice 
+                time=h5read(InputFile,'/time');
+                t=time((max(time)+1-cycle-points_mod):(max(time)+1-points_mod));
+                t_sdvig=t-t(1);
+                path_dataset=strcat('/',Group_selected(idx),'/',text_selected(idx));
+                vars=h5read(InputFile,path_dataset,t(1),double(cycle+1));
+                
+                if contains(text_selected(idx),"_")
+                 title_selected_dataset=strcat(extractBefore(text_selected(idx),"_"),"_{",extractAfter(text_selected(idx),"_"),"}");
+                else
+                 title_selected_dataset=text_selected(idx);   
+                end  
+            
+      
+               if  app.ax(idx).YLim(1)>min(vars)
+                   app.ax(idx).YLim(1)=min(vars);
+               end
+               if app.ax(idx).YLim(2)<max(vars)
+                  app.ax(idx).YLim(2)=max(vars); 
+               end
+                if app.ax(idx).XLim(2)<max(time)-t(1)+1-points_mod
+                   app.ax(idx).XLim(2)=max(time)-t(1)+1-points_mod; 
+                end  
+                
+              hold(app.ax(idx), 'on');
+              hold(app.ax(8),'on');
+             
+              
+              plot(app.ax(idx),t_sdvig,vars);%, "DisplayName",legend_name);
+           
+              %legend(app.ax(idx), 'show');
+              end
+              plot(app.ax(8),NaN,NaN, "DisplayName",legend_name);
+            end   
+        end
+
+        % Button pushed function: TotalclearButton
+        function TotalclearButtonPushed(app, event)
+            % Запоминаем текущие настройки
+            for idx=1:8
+                   app.ax(idx).Visible='off'; 
+                   delete(app.ax(idx).Children);
+              
+                   drawnow;
+                   app.TotalclearButton.Enable=false;
+                   app.AddlinesButton.Enable=false;
+            end
+              
+        end
+
+        % Value changed function: CheckStimulBox
+        function CheckStimulBoxValueChanged(app, event)
+        global cycle
+        global count_cycle         
+        global vars
+        global start_stim
+        
+            value = app.CheckStimulBox.Value;
+            if value==1
+              hold(app.UIAxes, 'on');
+              highlight_indices = [];
+              
+              for cycle_num= 1:count_cycle
+                  start_idx = (cycle_num - 1) * cycle + 1;
+                  target_idx = start_idx + start_stim-1;
+                  if target_idx <= length(vars)
+                    highlight_indices = [highlight_indices, target_idx];
+                  end
+              end
+              plot(app.UIAxes, highlight_indices, vars(highlight_indices), '^r', 'MarkerSize', 8, 'MarkerFaceColor', 'r', "DisplayName",'Stimuli');
+              app.DropDown.Items=[app.DropDown.Items, 'Stimuli'];
+              if app.modeSwitch.Value==0
+                  hold(app.UIAxes, 'off');
+              end
+            end
+            if value==0
+             h_stimuli = findobj(app.UIAxes, 'DisplayName', 'Stimuli');
+             if ~isempty(h_stimuli)
+                delete(h_stimuli);
+             end
+             
+            current_items = app.DropDown.Items;
+            
+            
+            % Находим индекс элемента 'Stimuli'
+            idx_to_remove = find(strcmp(current_items, 'Stimuli'));
+            
+            if ~isempty(idx_to_remove)
+                % Удаляем элемент из списка
+                app.DropDown.Items(idx_to_remove) = [];
+                
+
+                % 3. Проверяем, сколько элементов осталось
+                if isempty(app.DropDown.Items)
+                    % Случай 1: НЕ ОСТАЛОСЬ НИ ОДНОГО ЭЛЕМЕНТА
+                    app.DropDown.Enable = 'off';
+                    app.DropDown.Value = ''; % очищаем значение
+                    app.SeriesclearButton.Enable = 'off';
+                    app.ClearChartButton.Enable = 'off';
+                else
+                    % Случай 2: ОСТАЛОСЬ НЕСКОЛЬКО ЭЛЕМЕНТОВ (включая возможность одного)
+                    app.DropDown.Enable = 'on';
+                    app.DropDown.Value = app.DropDown.Items{1}; % выбираем первый элемент
+                    app.SeriesclearButton.Enable = 'on';
+                    app.ClearChartButton.Enable = 'on';
+                end
+            end
+            end
+        end
+    end
+
+    % Component initialization
+    methods (Access = private)
+
+        % Create UIFigure and components
+        function createComponents(app)
+
+            % Create MainUIFigure and hide until all components are created
+            app.MainUIFigure = uifigure('Visible', 'off');
+            app.MainUIFigure.Position = [250 100 1345 800];
+            app.MainUIFigure.Name = 'Use Main/Open to open h5 file';
+            app.MainUIFigure.CloseRequestFcn = createCallbackFcn(app, @MainUIFigureCloseRequest, true);
+
+            % Create MainMenu
+            app.MainMenu = uimenu(app.MainUIFigure);
+            app.MainMenu.Text = 'Main';
+
+            % Create Openh5fileMenu
+            app.Openh5fileMenu = uimenu(app.MainMenu);
+            app.Openh5fileMenu.MenuSelectedFcn = createCallbackFcn(app, @Openh5fileMenuSelected, true);
+            app.Openh5fileMenu.Text = 'Open h5 file';
+
+            % Create Menu
+            app.Menu = uimenu(app.MainMenu);
+            app.Menu.Visible = 'off';
+            app.Menu.Text = 'Menu';
+
+            % Create SavedataMenu
+            app.SavedataMenu = uimenu(app.MainUIFigure);
+            app.SavedataMenu.Enable = 'off';
+            app.SavedataMenu.Text = 'Save data to XLS';
+
+            % Create FolderMenu
+            app.FolderMenu = uimenu(app.SavedataMenu);
+            app.FolderMenu.MenuSelectedFcn = createCallbackFcn(app, @FolderMenuSelected, true);
+            app.FolderMenu.Tooltip = {''};
+            app.FolderMenu.Text = 'Folder to save';
+
+            % Create SaveallcyclesMenu
+            app.SaveallcyclesMenu = uimenu(app.SavedataMenu);
+            app.SaveallcyclesMenu.MenuSelectedFcn = createCallbackFcn(app, @SaveallcyclesMenuSelected, true);
+            app.SaveallcyclesMenu.Tooltip = {'Please, check one or more items in Struct_tree in Last cycle mode'};
+            app.SaveallcyclesMenu.Text = 'Save all cycles';
+
+            % Create SavethefirstcycleMenu
+            app.SavethefirstcycleMenu = uimenu(app.SavedataMenu);
+            app.SavethefirstcycleMenu.MenuSelectedFcn = createCallbackFcn(app, @SaveOneCycleMenuSelected, true);
+            app.SavethefirstcycleMenu.Text = 'Save the first cycle';
+
+            % Create SaveOneCycleMenu
+            app.SaveOneCycleMenu = uimenu(app.SavedataMenu);
+            app.SaveOneCycleMenu.MenuSelectedFcn = createCallbackFcn(app, @SaveOneCycleMenuSelected, true);
+            app.SaveOneCycleMenu.Tooltip = {'Please, check one or more items in Struct_tree in Last cycle mode'};
+            app.SaveOneCycleMenu.Text = 'Save the last cycle';
+
+            % Create SaveparamsMenu
+            app.SaveparamsMenu = uimenu(app.SavedataMenu);
+            app.SaveparamsMenu.MenuSelectedFcn = createCallbackFcn(app, @SaveparamsMenuSelected, true);
+            app.SaveparamsMenu.Text = 'Save parameters';
+
+            % Create SavelastvarsMenu
+            app.SavelastvarsMenu = uimenu(app.SavedataMenu);
+            app.SavelastvarsMenu.MenuSelectedFcn = createCallbackFcn(app, @SavelastvarsMenuSelected, true);
+            app.SavelastvarsMenu.Text = 'Save var 1st and last values';
+
+            % Create SavechartstoXLSMenu
+            app.SavechartstoXLSMenu = uimenu(app.SavedataMenu);
+            app.SavechartstoXLSMenu.MenuSelectedFcn = createCallbackFcn(app, @SavechartstoXLSMenuSelected, true);
+            app.SavechartstoXLSMenu.Text = 'Save charts to XLS';
+
+            % Create H5filestructurePanel
+            app.H5filestructurePanel = uipanel(app.MainUIFigure);
+            app.H5filestructurePanel.Title = 'H5 file structure';
+            app.H5filestructurePanel.Position = [1097 24 249 777];
+
+            % Create CycleLengthLabel
+            app.CycleLengthLabel = uilabel(app.H5filestructurePanel);
+            app.CycleLengthLabel.Position = [9 731 142 22];
+            app.CycleLengthLabel.Text = 'Cycle Length: ';
+
+            % Create FrequencyLabel
+            app.FrequencyLabel = uilabel(app.H5filestructurePanel);
+            app.FrequencyLabel.Position = [9 704 141 22];
+            app.FrequencyLabel.Text = 'Frequency: ';
+
+            % Create NumbersofCyclesLabel
+            app.NumbersofCyclesLabel = uilabel(app.H5filestructurePanel);
+            app.NumbersofCyclesLabel.Position = [9 674 169 22];
+            app.NumbersofCyclesLabel.Text = 'Numbers of Cycles:  ';
+
+            % Create FilesListBoxLabel
+            app.FilesListBoxLabel = uilabel(app.H5filestructurePanel);
+            app.FilesListBoxLabel.HorizontalAlignment = 'right';
+            app.FilesListBoxLabel.Position = [19 206 31 22];
+            app.FilesListBoxLabel.Text = 'Files';
+
+            % Create FilesListBox
+            app.FilesListBox = uilistbox(app.H5filestructurePanel);
+            app.FilesListBox.Items = {};
+            app.FilesListBox.ValueChangedFcn = createCallbackFcn(app, @FilesListBoxValueChanged, true);
+            app.FilesListBox.Position = [3 40 240 167];
+            app.FilesListBox.Value = {};
+
+            % Create Image
+            app.Image = uiimage(app.H5filestructurePanel);
+            app.Image.Visible = 'off';
+            app.Image.Position = [168 695 70 54];
+            app.Image.ImageSource = '297a1028216285.5637175b13bee.gif';
+
+            % Create DelListButton
+            app.DelListButton = uibutton(app.H5filestructurePanel, 'push');
+            app.DelListButton.ButtonPushedFcn = createCallbackFcn(app, @DelListButtonPushed, true);
+            app.DelListButton.Enable = 'off';
+            app.DelListButton.Position = [138 9 100 22];
+            app.DelListButton.Text = 'Delete item';
+
+            % Create AddlinesButton
+            app.AddlinesButton = uibutton(app.H5filestructurePanel, 'push');
+            app.AddlinesButton.ButtonPushedFcn = createCallbackFcn(app, @AddlinesButtonPushed, true);
+            app.AddlinesButton.Position = [11 7 100 22];
+            app.AddlinesButton.Text = 'Add lines';
+
+            % Create Struct_treedd
+            app.Struct_treedd = uitree(app.H5filestructurePanel);
+            app.Struct_treedd.SelectionChangedFcn = createCallbackFcn(app, @Struct_treeddSelectionChanged, true);
+            app.Struct_treedd.Position = [5 241 233 434];
+
+            % Create TabGroup
+            app.TabGroup = uitabgroup(app.MainUIFigure);
+            app.TabGroup.Position = [1 24 1096 777];
+
+            % Create AllcyclesTab
+            app.AllcyclesTab = uitab(app.TabGroup);
+            app.AllcyclesTab.Title = 'All cycles';
+
+            % Create UIAxes
+            app.UIAxes = uiaxes(app.AllcyclesTab);
+            title(app.UIAxes, '')
+            xlabel(app.UIAxes, 'X')
+            ylabel(app.UIAxes, 'Y')
+            app.UIAxes.PlotBoxAspectRatio = [1.94807692307692 1 1];
+            app.UIAxes.NextPlot = 'replace';
+            app.UIAxes.Position = [8 121 1060 575];
+
+            % Create DownSlider
+            app.DownSlider = uislider(app.AllcyclesTab);
+            app.DownSlider.ValueChangedFcn = createCallbackFcn(app, @DownSliderValueChanged2, true);
+            app.DownSlider.Position = [48 52 1012 3];
+            app.DownSlider.Value = 100;
+
+            % Create UpSlider
+            app.UpSlider = uislider(app.AllcyclesTab);
+            app.UpSlider.ValueChangedFcn = createCallbackFcn(app, @UpSliderValueChanged, true);
+            app.UpSlider.Position = [48 107 1012 3];
+
+            % Create modeSwitchLabel
+            app.modeSwitchLabel = uilabel(app.AllcyclesTab);
+            app.modeSwitchLabel.HorizontalAlignment = 'center';
+            app.modeSwitchLabel.Position = [48 701 36 22];
+            app.modeSwitchLabel.Text = 'mode';
+
+            % Create modeSwitch
+            app.modeSwitch = uiswitch(app.AllcyclesTab, 'slider');
+            app.modeSwitch.Items = {'Single', 'Multiple'};
+            app.modeSwitch.ValueChangedFcn = createCallbackFcn(app, @modeSwitchValueChanged, true);
+            app.modeSwitch.Position = [43 721 45 20];
+            app.modeSwitch.Value = 'Single';
+
+            % Create ClearChartButton
+            app.ClearChartButton = uibutton(app.AllcyclesTab, 'push');
+            app.ClearChartButton.ButtonPushedFcn = createCallbackFcn(app, @ClearChartButtonPushed, true);
+            app.ClearChartButton.Enable = 'off';
+            app.ClearChartButton.Position = [986 722 100 22];
+            app.ClearChartButton.Text = 'Total clear';
+
+            % Create DropDownLabel
+            app.DropDownLabel = uilabel(app.AllcyclesTab);
+            app.DropDownLabel.HorizontalAlignment = 'right';
+            app.DropDownLabel.Enable = 'off';
+            app.DropDownLabel.Position = [349 722 25 22];
+            app.DropDownLabel.Text = '';
+
+            % Create DropDown
+            app.DropDown = uidropdown(app.AllcyclesTab);
+            app.DropDown.Items = {'NA'};
+            app.DropDown.Enable = 'off';
+            app.DropDown.Position = [389 722 409 22];
+            app.DropDown.Value = 'NA';
+
+            % Create SeriesclearButton
+            app.SeriesclearButton = uibutton(app.AllcyclesTab, 'push');
+            app.SeriesclearButton.ButtonPushedFcn = createCallbackFcn(app, @SeriesclearButtonPushed, true);
+            app.SeriesclearButton.Enable = 'off';
+            app.SeriesclearButton.Position = [805 722 100 22];
+            app.SeriesclearButton.Text = 'Series clear';
+
+            % Create CheckStimulBox
+            app.CheckStimulBox = uicheckbox(app.AllcyclesTab);
+            app.CheckStimulBox.ValueChangedFcn = createCallbackFcn(app, @CheckStimulBoxValueChanged, true);
+            app.CheckStimulBox.Enable = 'off';
+            app.CheckStimulBox.Text = 'Show Stimuli';
+            app.CheckStimulBox.Position = [169 720 91 22];
+
+            % Create LastcycleTab
+            app.LastcycleTab = uitab(app.TabGroup);
+            app.LastcycleTab.Title = 'Last cycle';
+
+            % Create FigPanel
+            app.FigPanel = uipanel(app.LastcycleTab);
+            app.FigPanel.Title = 'Only first 7 selected items will be drawn';
+            app.FigPanel.SizeChangedFcn = createCallbackFcn(app, @FigPanelSizeChanged, true);
+            app.FigPanel.Position = [1 18 1084 734];
+
+            % Create TotalclearButton
+            app.TotalclearButton = uibutton(app.FigPanel, 'push');
+            app.TotalclearButton.ButtonPushedFcn = createCallbackFcn(app, @TotalclearButtonPushed, true);
+            app.TotalclearButton.Enable = 'off';
+            app.TotalclearButton.Position = [972 10 100 22];
+            app.TotalclearButton.Text = 'Total clear';
+
+            % Create DependenciesTab
+            app.DependenciesTab = uitab(app.TabGroup);
+            app.DependenciesTab.Title = 'Dependencies';
+
+            % Create DepTable
+            app.DepTable = uitable(app.DependenciesTab);
+            app.DepTable.ColumnName = {'Column 1'; 'Column 2'; 'Column 3'; 'Column 4'};
+            app.DepTable.RowName = {};
+            app.DepTable.Position = [1 1 558 704];
+
+            % Create NewdataButton
+            app.NewdataButton = uibutton(app.DependenciesTab, 'push');
+            app.NewdataButton.ButtonPushedFcn = createCallbackFcn(app, @NewdataButtonPushed, true);
+            app.NewdataButton.Tooltip = {'Calculate dependencies for the selected file'};
+            app.NewdataButton.Position = [1 710 100 22];
+            app.NewdataButton.Text = 'New data';
+
+            % Create SortdataonHzButton
+            app.SortdataonHzButton = uibutton(app.DependenciesTab, 'push');
+            app.SortdataonHzButton.ButtonPushedFcn = createCallbackFcn(app, @SortdataonHzButtonPushed, true);
+            app.SortdataonHzButton.Enable = 'off';
+            app.SortdataonHzButton.Tooltip = {''};
+            app.SortdataonHzButton.Position = [123 710 100 22];
+            app.SortdataonHzButton.Text = 'Sort data on Hz';
+
+            % Create SavetabletoXLSButton
+            app.SavetabletoXLSButton = uibutton(app.DependenciesTab, 'push');
+            app.SavetabletoXLSButton.ButtonPushedFcn = createCallbackFcn(app, @SavetabletoXLSButtonPushed, true);
+            app.SavetabletoXLSButton.Enable = 'off';
+            app.SavetabletoXLSButton.Tooltip = {''};
+            app.SavetabletoXLSButton.Position = [568 11 112 22];
+            app.SavetabletoXLSButton.Text = 'Save table to XLS';
+
+            % Create CharacteristicsDropDownLabel
+            app.CharacteristicsDropDownLabel = uilabel(app.DependenciesTab);
+            app.CharacteristicsDropDownLabel.HorizontalAlignment = 'right';
+            app.CharacteristicsDropDownLabel.Position = [569 309 85 22];
+            app.CharacteristicsDropDownLabel.Text = 'Characteristics';
+
+            % Create CharacteristicsDropDown
+            app.CharacteristicsDropDown = uidropdown(app.DependenciesTab);
+            app.CharacteristicsDropDown.Items = {'NA'};
+            app.CharacteristicsDropDown.Position = [669 309 100 22];
+            app.CharacteristicsDropDown.Value = 'NA';
+
+            % Create DrawchartButton
+            app.DrawchartButton = uibutton(app.DependenciesTab, 'push');
+            app.DrawchartButton.ButtonPushedFcn = createCallbackFcn(app, @DrawchartButtonPushed, true);
+            app.DrawchartButton.Enable = 'off';
+            app.DrawchartButton.Tooltip = {''};
+            app.DrawchartButton.Position = [978 309 100 22];
+            app.DrawchartButton.Text = 'Draw chart';
+
+            % Create DepAxes
+            app.DepAxes = uiaxes(app.DependenciesTab);
+            title(app.DepAxes, 'Title')
+            xlabel(app.DepAxes, 'X')
+            ylabel(app.DepAxes, 'Y')
+            app.DepAxes.PlotBoxAspectRatio = [1.72932330827068 1 1];
+            app.DepAxes.Position = [568 351 510 324];
+
+            % Create SortdataonCLButton
+            app.SortdataonCLButton = uibutton(app.DependenciesTab, 'push');
+            app.SortdataonCLButton.ButtonPushedFcn = createCallbackFcn(app, @SortdataonCLButtonPushed, true);
+            app.SortdataonCLButton.Enable = 'off';
+            app.SortdataonCLButton.Tooltip = {''};
+            app.SortdataonCLButton.Position = [237 710 100 22];
+            app.SortdataonCLButton.Text = 'Sort data on CL';
+
+            % Create XAxisDropDownLabel
+            app.XAxisDropDownLabel = uilabel(app.DependenciesTab);
+            app.XAxisDropDownLabel.HorizontalAlignment = 'right';
+            app.XAxisDropDownLabel.Position = [803 309 40 22];
+            app.XAxisDropDownLabel.Text = 'X Axis';
+
+            % Create XAxisDropDown
+            app.XAxisDropDown = uidropdown(app.DependenciesTab);
+            app.XAxisDropDown.Items = {'NA'};
+            app.XAxisDropDown.Position = [858 309 100 22];
+            app.XAxisDropDown.Value = 'NA';
+
+            % Create TableResortedLabel
+            app.TableResortedLabel = uilabel(app.DependenciesTab);
+            app.TableResortedLabel.Enable = 'off';
+            app.TableResortedLabel.Visible = 'off';
+            app.TableResortedLabel.Position = [728 265 142 22];
+            app.TableResortedLabel.Text = 'Table has been re-sorted!';
+
+            % Create Label
+            app.Label = uilabel(app.DependenciesTab);
+            app.Label.HorizontalAlignment = 'right';
+            app.Label.Position = [366 710 25 22];
+            app.Label.Text = {''; ''};
+
+            % Create DelColDropDown
+            app.DelColDropDown = uidropdown(app.DependenciesTab);
+            app.DelColDropDown.Items = {'NA'};
+            app.DelColDropDown.Enable = 'off';
+            app.DelColDropDown.Position = [406 710 212 22];
+            app.DelColDropDown.Value = 'NA';
+
+            % Create DelColButton
+            app.DelColButton = uibutton(app.DependenciesTab, 'push');
+            app.DelColButton.ButtonPushedFcn = createCallbackFcn(app, @DelColButtonPushed, true);
+            app.DelColButton.Enable = 'off';
+            app.DelColButton.Position = [619 710 100 22];
+            app.DelColButton.Text = 'Delete column';
+
+            % Create IntegralTab
+            app.IntegralTab = uitab(app.TabGroup);
+            app.IntegralTab.Title = 'Calcium integrals';
+
+            % Create IntTable
+            app.IntTable = uitable(app.IntegralTab);
+            app.IntTable.ColumnName = {'Column 1'; 'Column 2'; 'Column 3'; 'Column 4'};
+            app.IntTable.RowName = {};
+            app.IntTable.Position = [1 1 558 704];
+
+            % Create NewIntDataButton
+            app.NewIntDataButton = uibutton(app.IntegralTab, 'push');
+            app.NewIntDataButton.ButtonPushedFcn = createCallbackFcn(app, @NewIntDataButtonPushed, true);
+            app.NewIntDataButton.Tooltip = {'Calculate dependencies for the selected file'};
+            app.NewIntDataButton.Position = [1 710 100 22];
+            app.NewIntDataButton.Text = 'New data';
+
+            % Create SortIntdataonHzButton
+            app.SortIntdataonHzButton = uibutton(app.IntegralTab, 'push');
+            app.SortIntdataonHzButton.ButtonPushedFcn = createCallbackFcn(app, @SortIntdataonHzButtonPushed, true);
+            app.SortIntdataonHzButton.Enable = 'off';
+            app.SortIntdataonHzButton.Tooltip = {''};
+            app.SortIntdataonHzButton.Position = [123 710 100 22];
+            app.SortIntdataonHzButton.Text = 'Sort data on Hz';
+
+            % Create SaveInttabletoXLSButton
+            app.SaveInttabletoXLSButton = uibutton(app.IntegralTab, 'push');
+            app.SaveInttabletoXLSButton.ButtonPushedFcn = createCallbackFcn(app, @SaveInttabletoXLSButtonPushed, true);
+            app.SaveInttabletoXLSButton.Enable = 'off';
+            app.SaveInttabletoXLSButton.Tooltip = {''};
+            app.SaveInttabletoXLSButton.Position = [568 11 112 22];
+            app.SaveInttabletoXLSButton.Text = 'Save table to XLS';
+
+            % Create CharacteristicsDropDown_2Label
+            app.CharacteristicsDropDown_2Label = uilabel(app.IntegralTab);
+            app.CharacteristicsDropDown_2Label.HorizontalAlignment = 'right';
+            app.CharacteristicsDropDown_2Label.Position = [569 309 85 22];
+            app.CharacteristicsDropDown_2Label.Text = 'Characteristics';
+
+            % Create IntegralsDropDown
+            app.IntegralsDropDown = uidropdown(app.IntegralTab);
+            app.IntegralsDropDown.Items = {'NA'};
+            app.IntegralsDropDown.Position = [669 309 100 22];
+            app.IntegralsDropDown.Value = 'NA';
+
+            % Create DrawIntchartButton
+            app.DrawIntchartButton = uibutton(app.IntegralTab, 'push');
+            app.DrawIntchartButton.ButtonPushedFcn = createCallbackFcn(app, @DrawIntchartButtonPushed, true);
+            app.DrawIntchartButton.Enable = 'off';
+            app.DrawIntchartButton.Tooltip = {''};
+            app.DrawIntchartButton.Position = [978 309 100 22];
+            app.DrawIntchartButton.Text = 'Draw chart';
+
+            % Create IntAxes
+            app.IntAxes = uiaxes(app.IntegralTab);
+            title(app.IntAxes, 'Title')
+            xlabel(app.IntAxes, 'X')
+            ylabel(app.IntAxes, 'Y')
+            app.IntAxes.PlotBoxAspectRatio = [1.72932330827068 1 1];
+            app.IntAxes.Position = [568 351 510 324];
+
+            % Create SortIntdataonCLButton
+            app.SortIntdataonCLButton = uibutton(app.IntegralTab, 'push');
+            app.SortIntdataonCLButton.ButtonPushedFcn = createCallbackFcn(app, @SortIntdataonCLButtonPushed, true);
+            app.SortIntdataonCLButton.Enable = 'off';
+            app.SortIntdataonCLButton.Tooltip = {''};
+            app.SortIntdataonCLButton.Position = [237 710 100 22];
+            app.SortIntdataonCLButton.Text = 'Sort data on CL';
+
+            % Create XAxisDropDown_2Label
+            app.XAxisDropDown_2Label = uilabel(app.IntegralTab);
+            app.XAxisDropDown_2Label.HorizontalAlignment = 'right';
+            app.XAxisDropDown_2Label.Position = [803 309 40 22];
+            app.XAxisDropDown_2Label.Text = 'X Axis';
+
+            % Create XAxisIntDropDown
+            app.XAxisIntDropDown = uidropdown(app.IntegralTab);
+            app.XAxisIntDropDown.Items = {'NA'};
+            app.XAxisIntDropDown.Position = [858 309 100 22];
+            app.XAxisIntDropDown.Value = 'NA';
+
+            % Create TableIntResortedLabel
+            app.TableIntResortedLabel = uilabel(app.IntegralTab);
+            app.TableIntResortedLabel.Enable = 'off';
+            app.TableIntResortedLabel.Visible = 'off';
+            app.TableIntResortedLabel.Position = [732 270 142 22];
+            app.TableIntResortedLabel.Text = 'Table has been re-sorted!';
+
+            % Create Label_2
+            app.Label_2 = uilabel(app.IntegralTab);
+            app.Label_2.HorizontalAlignment = 'right';
+            app.Label_2.Position = [366 710 25 22];
+            app.Label_2.Text = {''; ''};
+
+            % Create DelColIntDropDown
+            app.DelColIntDropDown = uidropdown(app.IntegralTab);
+            app.DelColIntDropDown.Items = {'NA'};
+            app.DelColIntDropDown.Enable = 'off';
+            app.DelColIntDropDown.Position = [406 710 212 22];
+            app.DelColIntDropDown.Value = 'NA';
+
+            % Create DelColIntButton
+            app.DelColIntButton = uibutton(app.IntegralTab, 'push');
+            app.DelColIntButton.ButtonPushedFcn = createCallbackFcn(app, @DelColIntButtonPushed, true);
+            app.DelColIntButton.Enable = 'off';
+            app.DelColIntButton.Position = [619 710 100 22];
+            app.DelColIntButton.Text = 'Delete column';
+
+            % Show the figure after all components are created
+            app.MainUIFigure.Visible = 'on';
+        end
+    end
+
+    % App creation and deletion
+    methods (Access = public)
+
+        % Construct app
+        function app = My_H5_reader
+
+            % Create UIFigure and components
+            createComponents(app)
+
+            % Register the app with App Designer
+            registerApp(app, app.MainUIFigure)
+
+            % Execute the startup function
+            runStartupFcn(app, @startupFcn)
+
+            if nargout == 0
+                clear app
+            end
+        end
+
+        % Code that executes before app deletion
+        function delete(app)
+
+            % Delete UIFigure when app is deleted
+            delete(app.MainUIFigure)
+        end
+    end
+end
