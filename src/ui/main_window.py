@@ -196,8 +196,6 @@ class MainWindow(QMainWindow):
         self.clear_chart_btn.clicked.connect(self.clear_all_cycles_chart)
         toolbar_layout.addWidget(self.clear_chart_btn)
         
-        toolbar_layout.addStretch()
-        
         layout.addWidget(toolbar)
         
         splitter = QSplitter(Qt.Orientation.Vertical)
