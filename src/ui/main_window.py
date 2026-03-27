@@ -185,8 +185,6 @@ class MainWindow(QMainWindow):
         self.multiple_mode_btn.clicked.connect(self.set_multiple_mode)
         toolbar_layout.addWidget(self.multiple_mode_btn)
         
-        toolbar_layout.addStretch()
-        
         self.show_stimuli_check = QPushButton('Show Stimuli')
         self.show_stimuli_check.setCheckable(True)
         self.show_stimuli_check.clicked.connect(self.toggle_stimuli)
