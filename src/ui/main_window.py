@@ -5,7 +5,7 @@ from PyQt6.QtWidgets import (
     QTreeWidget, QTreeWidgetItem, QListWidget, QListWidgetItem,
     QMenuBar, QMenu, QFileDialog, QMessageBox, QPushButton,
     QLabel, QTableWidget, QTableWidgetItem, QSplitter, QFrame,
-    QToolBar, QStatusBar, QComboBox, QSlider
+    QStatusBar, QComboBox, QSlider
 )
 from PyQt6.QtCore import Qt
 from PyQt6.QtGui import QAction
@@ -19,6 +19,9 @@ import logging
 logger = logging.getLogger(__name__)
 
 from ..core.h5_reader import H5Reader, H5File
+
+
+VERSION = '1.0'
 
 
 class MatplotlibCanvas(FigureCanvas):
@@ -50,7 +53,7 @@ class MainWindow(QMainWindow):
         self.setup_ui()
 
     def setup_ui(self) -> None:
-        self.setWindowTitle('H5 Reader')
+        self.setWindowTitle(f'H5 Reader v{VERSION}')
         self.setGeometry(100, 100, 1200, 800)
         
         self._create_menu()
@@ -462,8 +465,8 @@ class MainWindow(QMainWindow):
         QMessageBox.about(
             self,
             'About H5 Reader',
-            '<h3>H5 Reader</h3>'
-            '<p>Version 1.0</p>'
+            f'<h3>H5 Reader</h3>'
+            f'<p>Version {VERSION}</p>'
             '<p>A program for viewing and analyzing HDF5 files '
             'with cardiomyocyte simulation data.</p>'
             '<p>Features:</p>'

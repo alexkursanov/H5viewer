@@ -22,7 +22,7 @@ def main_window(qapp):
 class TestMainWindow:
     def test_window_creation(self, main_window):
         assert main_window is not None
-        assert main_window.windowTitle() == 'H5 Reader'
+        assert 'H5 Reader' in main_window.windowTitle()
     
     def test_initial_state(self, main_window):
         assert main_window.current_file is None
