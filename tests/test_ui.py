@@ -1,5 +1,5 @@
 import pytest
-from PyQt6.QtWidgets import QApplication
+from PyQt6.QtWidgets import QApplication, QTreeWidgetItem
 import sys
 
 
@@ -176,6 +176,10 @@ class TestMainWindowWithFile:
     def test_file(self):
         return '/home/akursanov/OpenCodeProjects/H5reader/results_1Hz_100.h5'
     
+    @pytest.fixture
+    def test_file2(self):
+        return '/home/akursanov/OpenCodeProjects/H5reader/results_2Hz_100.h5'
+    
     def test_load_real_file(self, main_window, test_file):
         initial_count = len(main_window.files)
         main_window.load_file(test_file)
@@ -196,6 +200,124 @@ class TestMainWindowWithFile:
     def test_tree_updates_after_load(self, main_window, test_file):
         main_window.load_file(test_file)
         assert main_window.tree_widget.topLevelItemCount() > 0
+    
+    def test_multiple_files_loaded(self, main_window, test_file, test_file2):
+        main_window.load_file(test_file)
+        main_window.load_file(test_file2)
+        assert len(main_window.files) == 2
+    
+    def test_switch_between_files(self, main_window, test_file, test_file2):
+        main_window.load_file(test_file)
+        main_window.load_file(test_file2)
+        main_window.files_list.setCurrentRow(0)
+        main_window.on_file_selected(main_window.files_list.item(0))
+        first_file = main_window.current_file.filename
+        main_window.files_list.setCurrentRow(1)
+        main_window.on_file_selected(main_window.files_list.item(1))
+        assert main_window.current_file.filename != first_file
+
+
+class TestIntegralsTab:
+    @pytest.fixture
+    def test_file(self):
+        return '/home/akursanov/OpenCodeProjects/H5reader/results_1Hz_100.h5'
+    
+    def test_integrals_tab_widgets_exist(self, main_window):
+        main_window.tab_widget.setCurrentIndex(3)
+        assert main_window.int_table is not None
+        assert main_window.int_chart_canvas is not None
+        assert main_window.int_chart_toolbar is not None
+    
+    def test_integrals_buttons_initially_disabled(self, main_window):
+        main_window.tab_widget.setCurrentIndex(3)
+        assert main_window.sort_int_hz_btn.isEnabled() == False
+        assert main_window.sort_int_cl_btn.isEnabled() == False
+        assert main_window.save_int_table_btn.isEnabled() == False
+        assert main_window.draw_int_chart_btn.isEnabled() == False
+    
+    def test_integrals_new_data_button_exists(self, main_window):
+        main_window.tab_widget.setCurrentIndex(3)
+        assert main_window.new_int_data_btn is not None
+        assert main_window.new_int_data_btn.text() in ['New Data', 'Add data']
+    
+    def test_integrals_combos_exist(self, main_window):
+        main_window.tab_widget.setCurrentIndex(3)
+        assert main_window.x_axis_int_combo is not None
+        assert main_window.integrals_combo is not None
+
+
+class TestDependenciesTab:
+    @pytest.fixture
+    def test_file(self):
+        return '/home/akursanov/OpenCodeProjects/H5reader/results_1Hz_100.h5'
+    
+    def test_dependencies_tab_widgets_exist(self, main_window):
+        main_window.tab_widget.setCurrentIndex(2)
+        assert main_window.dep_table is not None
+        assert main_window.dep_chart_canvas is not None
+        assert main_window.dep_chart_toolbar is not None
+    
+    def test_dependencies_buttons_initially_disabled(self, main_window):
+        main_window.tab_widget.setCurrentIndex(2)
+        assert main_window.sort_dep_hz_btn.isEnabled() == False
+        assert main_window.sort_dep_cl_btn.isEnabled() == False
+        assert main_window.save_dep_table_btn.isEnabled() == False
+        assert main_window.draw_dep_chart_btn.isEnabled() == False
+    
+    def test_dependencies_combos_exist(self, main_window):
+        main_window.tab_widget.setCurrentIndex(2)
+        assert main_window.x_axis_dep_combo is not None
+        assert main_window.char_dep_combo is not None
+
+
+class TestEdgeCases:
+    def test_plot_without_file_creates_empty_plot(self, main_window):
+        main_window.plot_all_cycles('variables', 'V')
+        assert len(main_window.all_cycles_canvas.axes.lines) == 0
+    
+    def test_delete_file_empty_list_no_error(self, main_window):
+        main_window.delete_file()
+        assert main_window.files == []
+    
+    def test_add_lines_no_selection(self, main_window):
+        main_window.add_lines()
+        assert main_window.last_cycle_selected_items == []
+    
+    def test_clear_chart_empty_plot(self, main_window):
+        main_window.clear_all_cycles_chart()
+        assert len(main_window.all_cycles_canvas.axes.lines) == 0
+    
+    def test_update_x_range_no_data(self, main_window):
+        main_window.update_x_range()
+        assert main_window.up_slider.value() == 0
+    
+    def test_clear_selection_empty(self, main_window):
+        main_window.clear_selection()
+        assert main_window.last_cycle_selected_items == []
+
+
+class TestLastCycleTab:
+    @pytest.fixture
+    def test_file(self):
+        return '/home/akursanov/OpenCodeProjects/H5reader/results_1Hz_100.h5'
+    
+    def test_last_cycle_tab_widgets_exist(self, main_window):
+        main_window.tab_widget.setCurrentIndex(1)
+        assert main_window.last_cycle_canvas is not None
+        assert main_window.last_cycle_toolbar is not None
+        assert main_window.last_cycle_selected_list is not None
+    
+    def test_last_cycle_buttons_exist(self, main_window):
+        main_window.tab_widget.setCurrentIndex(1)
+        assert main_window.add_lines_btn is not None
+        assert main_window.remove_selected_btn is not None
+        assert main_window.clear_selection_btn is not None
+        assert main_window.total_clear_btn is not None
+    
+    def test_last_cycle_buttons_initially_disabled(self, main_window):
+        main_window.tab_widget.setCurrentIndex(1)
+        assert main_window.add_lines_btn.isEnabled() == False
+        assert main_window.total_clear_btn.isEnabled() == False
 
 
 if __name__ == '__main__':
