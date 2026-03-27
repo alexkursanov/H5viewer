@@ -1,3 +1,5 @@
+from typing import Optional, List, Dict, Any
+
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QTabWidget,
     QTreeWidget, QTreeWidgetItem, QListWidget, QListWidgetItem,
@@ -20,37 +22,34 @@ from ..core.h5_reader import H5Reader, H5File
 
 
 class MatplotlibCanvas(FigureCanvas):
-    def __init__(self, parent=None, width=6, height=4, dpi=100):
-        self.fig = Figure(figsize=(width, height), dpi=dpi)
+    def __init__(self, parent: Optional[QWidget] = None, width: float = 6, height: float = 4, dpi: int = 100) -> None:
+        self.fig: Figure = Figure(figsize=(width, height), dpi=dpi)
         self.axes = self.fig.add_subplot(111)
         super().__init__(self.fig)
         self.setParent(parent)
 
-
-from typing import Optional, List, Dict, Any
-
 class MainWindow(QMainWindow):
-    def __init__(self):
+    def __init__(self) -> None:
         super().__init__()
-        self.h5_reader = H5Reader()
+        self.h5_reader: H5Reader = H5Reader()
         self.current_file: Optional[H5File] = None
-        self.files: list = []
-        self.current_plot_data = {}
-        self.last_cycle_selected_items = []
-        self.last_cycle_plots = []
-        self.last_cycle_ylims = [float('inf'), float('-inf')]
-        self.last_cycle_xlims = [0, 0]
-        
-        self.dep_data = {}
-        self.dep_characteristics = []
-        self.dep_files = []
-        
-        self.int_data = {}
-        self.int_characteristics = []
-        self.int_files = []
+        self.files: List[H5File] = []
+        self.current_plot_data: Dict[str, Any] = {}
+        self.last_cycle_selected_items: List[QTreeWidgetItem] = []
+        self.last_cycle_plots: List[tuple] = []
+        self.last_cycle_ylims: List[float] = [float('inf'), float('-inf')]
+        self.last_cycle_xlims: List[float] = [0, 0]
+
+        self.dep_data: Dict[str, Dict[str, float]] = {}
+        self.dep_characteristics: List[str] = []
+        self.dep_files: List[str] = []
+
+        self.int_data: Dict[str, Dict[str, float]] = {}
+        self.int_characteristics: List[str] = []
+        self.int_files: List[str] = []
         self.setup_ui()
-        
-    def setup_ui(self):
+
+    def setup_ui(self) -> None:
         self.setWindowTitle('H5 Reader')
         self.setGeometry(100, 100, 1200, 800)
         
@@ -58,7 +57,7 @@ class MainWindow(QMainWindow):
         self._create_central_widget()
         self._create_status_bar()
         
-    def _create_menu(self):
+    def _create_menu(self) -> None:
         menubar = self.menuBar()
         
         file_menu = menubar.addMenu('File')
@@ -102,7 +101,7 @@ class MainWindow(QMainWindow):
         exit_action.triggered.connect(self.close)
         file_menu.addAction(exit_action)
         
-    def _create_central_widget(self):
+    def _create_central_widget(self) -> None:
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
         
@@ -119,7 +118,7 @@ class MainWindow(QMainWindow):
         
         layout.addWidget(splitter)
         
-    def _create_left_panel(self):
+    def _create_left_panel(self) -> QWidget:
         frame = QFrame()
         frame.setFrameShape(QFrame.Shape.StyledPanel)
         frame.setMaximumWidth(300)
@@ -149,7 +148,7 @@ class MainWindow(QMainWindow):
         
         return frame
     
-    def _create_right_panel(self):
+    def _create_right_panel(self) -> QWidget:
         self.tab_widget = QTabWidget()
         
         self.all_cycles_tab = self._create_all_cycles_tab()
@@ -164,7 +163,7 @@ class MainWindow(QMainWindow):
         
         return self.tab_widget
     
-    def _create_all_cycles_tab(self):
+    def _create_all_cycles_tab(self) -> QWidget:
         widget = QWidget()
         layout = QVBoxLayout(widget)
         
@@ -246,7 +245,7 @@ class MainWindow(QMainWindow):
         
         return widget
     
-    def _create_last_cycle_tab(self):
+    def _create_last_cycle_tab(self) -> QWidget:
         widget = QWidget()
         layout = QVBoxLayout(widget)
         
@@ -296,7 +295,7 @@ class MainWindow(QMainWindow):
         
         return widget
     
-    def _create_dependencies_tab(self):
+    def _create_dependencies_tab(self) -> QWidget:
         widget = QWidget()
         layout = QHBoxLayout(widget)
         
@@ -364,7 +363,7 @@ class MainWindow(QMainWindow):
         
         return widget
     
-    def _create_integrals_tab(self):
+    def _create_integrals_tab(self) -> QWidget:
         widget = QWidget()
         layout = QHBoxLayout(widget)
         
@@ -432,7 +431,7 @@ class MainWindow(QMainWindow):
         
         return widget
     
-    def _create_status_bar(self):
+    def _create_status_bar(self) -> None:
         self.status_bar = QStatusBar()
         self.setStatusBar(self.status_bar)
         self.status_bar.showMessage('Ready')
@@ -463,7 +462,7 @@ class MainWindow(QMainWindow):
         except Exception as e:
             QMessageBox.critical(self, 'Error', f'Failed to open file: {str(e)}')
     
-    def on_file_selected(self, item):
+    def on_file_selected(self, item: QListWidgetItem) -> None:
         idx = self.files_list.row(item)
         if idx < len(self.files):
             self.current_file = self.files[idx]
@@ -472,7 +471,7 @@ class MainWindow(QMainWindow):
             self.update_info()
             self.delete_file_btn.setEnabled(True)
     
-    def delete_file(self):
+    def delete_file(self) -> None:
         current_row = self.files_list.currentRow()
         if current_row >= 0:
             h5file = self.files[current_row]
@@ -489,7 +488,7 @@ class MainWindow(QMainWindow):
                 self.clear_info()
                 self.delete_file_btn.setEnabled(False)
     
-    def update_tree(self):
+    def update_tree(self) -> None:
         self.tree_widget.clear()
         
         if not self.current_file:
@@ -506,7 +505,7 @@ class MainWindow(QMainWindow):
             
             group_item.setExpanded(True)
     
-    def update_info(self):
+    def update_info(self) -> None:
         if self.current_file:
             info = []
             if self.current_file.cycle:
@@ -518,7 +517,7 @@ class MainWindow(QMainWindow):
             
             self.info_label.setText('\n'.join(info))
     
-    def clear_info(self):
+    def clear_info(self) -> None:
         self.info_label.setText('')
     
     def on_tree_item_clicked(self, item):
@@ -541,7 +540,7 @@ class MainWindow(QMainWindow):
                 self.total_clear_btn.setEnabled(len(self.last_cycle_selected_items) > 0)
                 self.clear_selection_btn.setEnabled(len(self.last_cycle_selected_items) > 0)
     
-    def plot_all_cycles(self, group: str, dataset: str):
+    def plot_all_cycles(self, group: str, dataset: str) -> None:
         if group in ['variables', 'currents', 'forces']:
             time = self.h5_reader.read_dataset('time', '')
             data = self.h5_reader.read_dataset(group, dataset)
@@ -573,7 +572,7 @@ class MainWindow(QMainWindow):
                 
                 self.all_cycles_canvas.draw()
     
-    def plot_last_cycle(self, group, dataset):
+    def plot_last_cycle(self, group: str, dataset: str) -> None:
         if not self.current_file:
             return
             
@@ -598,15 +597,15 @@ class MainWindow(QMainWindow):
                 self.last_cycle_canvas.axes.set_title(dataset)
                 self.last_cycle_canvas.draw()
     
-    def set_single_mode(self):
+    def set_single_mode(self) -> None:
         self.single_mode_btn.setChecked(True)
         self.multiple_mode_btn.setChecked(False)
     
-    def set_multiple_mode(self):
+    def set_multiple_mode(self) -> None:
         self.single_mode_btn.setChecked(False)
         self.multiple_mode_btn.setChecked(True)
     
-    def toggle_stimuli(self):
+    def toggle_stimuli(self) -> None:
         if not self.current_file or not self.current_plot_data:
             return
         
@@ -652,12 +651,12 @@ class MainWindow(QMainWindow):
                 h_stimuli.remove()
                 self.all_cycles_canvas.draw()
     
-    def clear_all_cycles_chart(self):
+    def clear_all_cycles_chart(self) -> None:
         self.all_cycles_canvas.axes.clear()
         self.current_plot_data = {}
         self.all_cycles_canvas.draw()
     
-    def update_x_range(self):
+    def update_x_range(self) -> None:
         if not self.current_plot_data:
             return
         
@@ -672,7 +671,7 @@ class MainWindow(QMainWindow):
         self.all_cycles_canvas.axes.set_xlim(up_val, down_val)
         self.all_cycles_canvas.draw()
     
-    def clear_last_cycle(self):
+    def clear_last_cycle(self) -> None:
         self.last_cycle_canvas.axes.clear()
         self.last_cycle_plots = []
         self.last_cycle_selected_items = []
@@ -685,7 +684,7 @@ class MainWindow(QMainWindow):
         self.remove_selected_btn.setEnabled(False)
         self.clear_selection_btn.setEnabled(False)
     
-    def remove_selected_item(self):
+    def remove_selected_item(self) -> None:
         current_row = self.last_cycle_selected_list.currentRow()
         if current_row >= 0:
             self.last_cycle_selected_items.pop(current_row)
@@ -693,14 +692,14 @@ class MainWindow(QMainWindow):
             self.add_lines_btn.setEnabled(len(self.last_cycle_selected_items) > 0)
             self.remove_selected_btn.setEnabled(self.last_cycle_selected_list.currentRow() >= 0)
     
-    def clear_selection(self):
+    def clear_selection(self) -> None:
         self.last_cycle_selected_items = []
         self.last_cycle_selected_list.clear()
         self.add_lines_btn.setEnabled(False)
         self.remove_selected_btn.setEnabled(False)
         self.clear_selection_btn.setEnabled(False)
     
-    def add_lines(self):
+    def add_lines(self) -> None:
         if not self.current_file or not self.last_cycle_selected_items:
             return
         
@@ -753,7 +752,7 @@ class MainWindow(QMainWindow):
             self.last_cycle_canvas.axes.legend()
         self.last_cycle_canvas.draw()
     
-    def add_dep_data(self):
+    def add_dep_data(self) -> None:
         if not self.current_file:
             QMessageBox.warning(self, 'Warning', 'No file selected')
             return
@@ -905,7 +904,7 @@ class MainWindow(QMainWindow):
         
         self.status_bar.showMessage(f'Added data for: {fname}')
     
-    def update_dep_table(self):
+    def update_dep_table(self) -> None:
         if not self.dep_data:
             self.dep_table.setRowCount(0)
             self.dep_table.setColumnCount(0)
@@ -925,7 +924,7 @@ class MainWindow(QMainWindow):
                 val = self.dep_data[fname].get(char, '')
                 self.dep_table.setItem(i, j + 1, QTableWidgetItem(str(val)))
     
-    def sort_dep_on_hz(self):
+    def sort_dep_on_hz(self) -> None:
         if not self.dep_data:
             return
         
@@ -935,7 +934,7 @@ class MainWindow(QMainWindow):
         self.update_dep_table()
         self.status_bar.showMessage('Sorted by Frequency (Hz)')
     
-    def sort_dep_on_cl(self):
+    def sort_dep_on_cl(self) -> None:
         if not self.dep_data:
             return
         
@@ -945,7 +944,7 @@ class MainWindow(QMainWindow):
         self.update_dep_table()
         self.status_bar.showMessage('Sorted by Cycle length (ms)')
     
-    def draw_dep_chart(self):
+    def draw_dep_chart(self) -> None:
         x_axis = self.x_axis_dep_combo.currentText()
         char = self.char_dep_combo.currentText()
         
@@ -974,7 +973,7 @@ class MainWindow(QMainWindow):
         
         self.status_bar.showMessage(f'Chart: {char} vs {x_axis}')
     
-    def save_dep_table_to_excel(self):
+    def save_dep_table_to_excel(self) -> None:
         if not self.dep_data:
             return
         
@@ -1002,7 +1001,7 @@ class MainWindow(QMainWindow):
         df.to_excel(filepath, index=False)
         self.status_bar.showMessage(f'Saved to: {filepath}')
     
-    def add_int_data(self):
+    def add_int_data(self) -> None:
         if not self.current_file:
             QMessageBox.warning(self, 'Warning', 'No file selected')
             return
@@ -1167,7 +1166,7 @@ class MainWindow(QMainWindow):
         
         self.status_bar.showMessage(f'Added integrals for: {fname}')
     
-    def update_int_table(self):
+    def update_int_table(self) -> None:
         if not self.int_data:
             self.int_table.setRowCount(0)
             self.int_table.setColumnCount(0)
@@ -1187,7 +1186,7 @@ class MainWindow(QMainWindow):
                 val = self.int_data[fname].get(char, '')
                 self.int_table.setItem(i, j + 1, QTableWidgetItem(str(val)))
     
-    def sort_int_on_hz(self):
+    def sort_int_on_hz(self) -> None:
         if not self.int_data:
             return
         
@@ -1197,7 +1196,7 @@ class MainWindow(QMainWindow):
         self.update_int_table()
         self.status_bar.showMessage('Sorted by Frequency (Hz)')
     
-    def sort_int_on_cl(self):
+    def sort_int_on_cl(self) -> None:
         if not self.int_data:
             return
         
@@ -1207,7 +1206,7 @@ class MainWindow(QMainWindow):
         self.update_int_table()
         self.status_bar.showMessage('Sorted by Cycle length (ms)')
     
-    def draw_int_chart(self):
+    def draw_int_chart(self) -> None:
         x_axis = self.x_axis_int_combo.currentText()
         char = self.integrals_combo.currentText()
         
@@ -1236,7 +1235,7 @@ class MainWindow(QMainWindow):
         
         self.status_bar.showMessage(f'Chart: {char} vs {x_axis}')
     
-    def save_int_table_to_excel(self):
+    def save_int_table_to_excel(self) -> None:
         if not self.int_data:
             return
         
@@ -1264,7 +1263,7 @@ class MainWindow(QMainWindow):
         df.to_excel(filepath, index=False)
         self.status_bar.showMessage(f'Saved to: {filepath}')
     
-    def save_all_cycles(self):
+    def save_all_cycles(self) -> None:
         if not self.current_file:
             QMessageBox.warning(self, 'Warning', 'No file selected')
             return
@@ -1303,7 +1302,7 @@ class MainWindow(QMainWindow):
         df.to_excel(filepath, index=False)
         self.status_bar.showMessage(f'Saved all cycles to: {filepath}')
     
-    def save_first_cycle(self):
+    def save_first_cycle(self) -> None:
         if not self.current_file:
             QMessageBox.warning(self, 'Warning', 'No file selected')
             return
@@ -1346,7 +1345,7 @@ class MainWindow(QMainWindow):
         df.to_excel(filepath, index=False)
         self.status_bar.showMessage(f'Saved first cycle to: {filepath}')
     
-    def save_last_cycle(self):
+    def save_last_cycle(self) -> None:
         if not self.current_file:
             QMessageBox.warning(self, 'Warning', 'No file selected')
             return
@@ -1393,7 +1392,7 @@ class MainWindow(QMainWindow):
         df.to_excel(filepath, index=False)
         self.status_bar.showMessage(f'Saved last cycle to: {filepath}')
 
-    def save_parameters(self):
+    def save_parameters(self) -> None:
         if not self.current_file:
             QMessageBox.warning(self, 'Warning', 'No file selected')
             return
@@ -1450,7 +1449,7 @@ class MainWindow(QMainWindow):
         df.to_excel(filepath, index=False)
         self.status_bar.showMessage(f'Saved {len(params)} parameters to: {filepath}')
     
-    def save_vars(self):
+    def save_vars(self) -> None:
         if not self.current_file:
             QMessageBox.warning(self, 'Warning', 'No file selected')
             return
@@ -1523,7 +1522,7 @@ class MainWindow(QMainWindow):
         
         self.status_bar.showMessage(f'Saved vars to: {filepath}')
     
-    def save_charts(self):
+    def save_charts(self) -> None:
         if not self.current_file:
             QMessageBox.warning(self, 'Warning', 'No file selected')
             return
