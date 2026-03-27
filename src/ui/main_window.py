@@ -5,14 +5,12 @@ from PyQt6.QtWidgets import (
     QLabel, QTableWidget, QTableWidgetItem, QSplitter, QFrame,
     QToolBar, QStatusBar, QComboBox, QSlider
 )
-from PyQt6.QtCore import Qt, pyqtSignal, QTimer
-from PyQt6.QtGui import QAction, QIcon
-import matplotlib.pyplot as plt
+from PyQt6.QtCore import Qt
+from PyQt6.QtGui import QAction
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qt import NavigationToolbar2QT as NavigationToolbar
 from matplotlib.figure import Figure
 import numpy as np
-import os
 
 from ..core.h5_reader import H5Reader, H5File
 
@@ -28,8 +26,6 @@ class MatplotlibCanvas(FigureCanvas):
 from typing import Optional
 
 class MainWindow(QMainWindow):
-    current_file_changed = pyqtSignal(object)
-    
     def __init__(self):
         super().__init__()
         self.h5_reader = H5Reader()
@@ -753,7 +749,6 @@ class MainWindow(QMainWindow):
             self.last_cycle_canvas.axes.set_xlim(self.last_cycle_xlims[0], self.last_cycle_xlims[1])
             self.last_cycle_canvas.axes.set_xlabel('msec')
             self.last_cycle_canvas.axes.legend()
-            self.last_cycle_canvas.draw()
         self.last_cycle_canvas.draw()
     
     def add_dep_data(self):
