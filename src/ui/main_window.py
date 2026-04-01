@@ -5,9 +5,10 @@ from PyQt6.QtWidgets import (
     QTreeWidget, QTreeWidgetItem, QListWidget, QListWidgetItem,
     QMenuBar, QMenu, QFileDialog, QMessageBox, QPushButton,
     QLabel, QTableWidget, QTableWidgetItem, QSplitter, QFrame,
-    QStatusBar, QComboBox, QSlider
+    QStatusBar, QComboBox, QSlider, QDialog, QInputDialog, QLineEdit,
+    QApplication
 )
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QAction
 from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
 from matplotlib.backends.backend_qt import NavigationToolbar2QT as NavigationToolbar
@@ -15,10 +16,12 @@ from matplotlib.figure import Figure
 import matplotlib.pyplot as plt
 import numpy as np
 import logging
+import os
+import tempfile
+import shutil
 
-logger = logging.getLogger(__name__)
-
-from ..core.h5_reader import H5Reader, H5File
+from src.core.h5_reader import H5Reader, H5File
+from src.utils.ssh_client import SSHConnection, SSHDialog
 
 
 VERSION = '1.0'
@@ -55,6 +58,10 @@ class MainWindow(QMainWindow):
         self.int_data: Dict[str, Dict[str, float]] = {}
         self.int_characteristics: List[str] = []
         self.int_files: List[str] = []
+        
+        self.ssh_connection = SSHConnection()
+        self.temp_dir = tempfile.mkdtemp()
+        
         self.setup_ui()
 
     def setup_ui(self) -> None:
@@ -108,6 +115,22 @@ class MainWindow(QMainWindow):
         exit_action.setShortcut('Ctrl+Q')
         exit_action.triggered.connect(self.close)
         file_menu.addAction(exit_action)
+        
+        ssh_menu = menubar.addMenu('SSH')
+        
+        connect_action = QAction('Connect to Server', self)
+        connect_action.triggered.connect(self.ssh_connect)
+        ssh_menu.addAction(connect_action)
+        
+        disconnect_action = QAction('Disconnect', self)
+        disconnect_action.triggered.connect(self.ssh_disconnect)
+        ssh_menu.addAction(disconnect_action)
+        
+        ssh_menu.addSeparator()
+        
+        browse_action = QAction('Browse Remote Files', self)
+        browse_action.triggered.connect(self.ssh_browse)
+        ssh_menu.addAction(browse_action)
         
         help_menu = menubar.addMenu('Help')
         
@@ -1842,6 +1865,232 @@ class MainWindow(QMainWindow):
             df_link.to_excel(writer, sheet_name='Charts', index=False)
         
         self.status_bar.showMessage(f'Saved charts to: {pdf_path}')
+    
+    def ssh_connect(self) -> None:
+        dialog = SSHDialog(self)
+        if dialog.exec():
+            host, port, username, password, key_file = dialog.get_connection_params()
+            if not host or not username:
+                QMessageBox.warning(self, 'Error', 'Host and username are required')
+                return
+            
+            self.status_bar.showMessage(f'Connecting to {host}...')
+            
+            result = self.ssh_connection.connect(host, port, username, password, key_file, timeout=15)
+            
+            if result:
+                self.status_bar.showMessage(f'Connected to {host} ({username}@{host}:{port})')
+                QMessageBox.information(self, 'Connected', f'Successfully connected to {host}')
+            else:
+                error_msg = self.ssh_connection.last_error if self.ssh_connection.last_error else 'Unknown error'
+                self.status_bar.showMessage('Connection failed')
+                QMessageBox.critical(self, 'Error', f'Failed to connect to SSH server.\n\nError: {error_msg}')
+    
+    def ssh_disconnect(self) -> None:
+        if self.ssh_connection.is_connected():
+            self.ssh_connection.disconnect()
+            self.status_bar.showMessage('Disconnected from SSH server')
+            QMessageBox.information(self, 'Disconnected', 'SSH connection closed')
+        else:
+            QMessageBox.information(self, 'Info', 'No active SSH connection')
+    
+    def ssh_browse(self) -> None:
+        if not self.ssh_connection.is_connected():
+            reply = QMessageBox.question(
+                self, 'Not Connected', 
+                'Not connected to SSH. Would you like to connect now?',
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
+            if reply == QMessageBox.StandardButton.Yes:
+                self.ssh_connect()
+                if not self.ssh_connection.is_connected():
+                    return
+        
+        dialog = QDialog(self)
+        dialog.setWindowTitle('SSH File Browser')
+        dialog.setMinimumSize(800, 500)
+        layout = QVBoxLayout(dialog)
+        
+        path_layout = QHBoxLayout()
+        path_layout.addWidget(QLabel('Path:'))
+        path_input = QLineEdit('/home/')
+        path_layout.addWidget(path_input)
+        
+        up_btn = QPushButton('↑ Up')
+        up_btn.clicked.connect(lambda: self._ssh_go_up(dialog, path_input))
+        path_layout.addWidget(up_btn)
+        
+        refresh_btn = QPushButton('↻')
+        refresh_btn.setToolTip('Refresh')
+        refresh_btn.clicked.connect(lambda: self._ssh_refresh(dialog, path_input))
+        path_layout.addWidget(refresh_btn)
+        
+        layout.addLayout(path_layout)
+        
+        table = QTableWidget()
+        table.setColumnCount(3)
+        table.setHorizontalHeaderLabels(['Name', 'Size', 'Type'])
+        table.setColumnWidth(0, 400)
+        table.setColumnWidth(1, 100)
+        table.setColumnWidth(2, 80)
+        table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        table.setSelectionMode(QTableWidget.SelectionMode.SingleSelection)
+        table.itemDoubleClicked.connect(lambda item: self._ssh_on_double_click(item, dialog, path_input, table))
+        layout.addWidget(table)
+        
+        self._ssh_load_directory(path_input.text(), table)
+        
+        btn_layout = QHBoxLayout()
+        
+        download_btn = QPushButton('Download & Open')
+        download_btn.clicked.connect(lambda: self._ssh_download_selected(dialog, path_input.text(), table))
+        btn_layout.addWidget(download_btn)
+        
+        btn_layout.addStretch()
+        
+        close_btn = QPushButton('Close')
+        close_btn.clicked.connect(dialog.close)
+        btn_layout.addWidget(close_btn)
+        
+        layout.addLayout(btn_layout)
+        dialog.exec()
+    
+    def _ssh_go_up(self, dialog: QDialog, path_input: QLineEdit) -> None:
+        current_path = path_input.text()
+        if current_path == '/':
+            return
+        parent = os.path.dirname(current_path)
+        if not parent:
+            parent = '/'
+        path_input.setText(parent)
+        table = dialog.findChild(QTableWidget)
+        if table:
+            self._ssh_load_directory(parent, table)
+    
+    def _ssh_refresh(self, dialog: QDialog, path_input: QLineEdit) -> None:
+        table = dialog.findChild(QTableWidget)
+        if table:
+            self._ssh_load_directory(path_input.text(), table)
+    
+    def _ssh_on_double_click(self, item: QTableWidgetItem, dialog: QDialog, path_input: QLineEdit, table: QTableWidget) -> None:
+        row = item.row()
+        name_item = table.item(row, 0)
+        type_item = table.item(row, 2)
+        if name_item and type_item:
+            name = name_item.text()
+            ftype = type_item.text()
+            if ftype == 'DIR':
+                current_path = path_input.text()
+                if current_path.endswith('/'):
+                    new_path = current_path + name
+                else:
+                    new_path = current_path + '/' + name
+                path_input.setText(new_path)
+                self._ssh_load_directory(new_path, table)
+    
+    def _ssh_load_directory(self, path: str, table: QTableWidget) -> None:
+        files = self.ssh_connection.list_directory_attr(path)
+        table.setRowCount(0)
+        
+        if not files:
+            return
+        
+        dirs = []
+        reg_files = []
+        
+        for f in files:
+            fname = f.filename
+            if fname.startswith('.'):
+                continue
+            is_dir = f.st_mode & 0o170000 == 0o040000
+            size = f.st_size
+            if is_dir:
+                dirs.append((fname, size))
+            else:
+                if fname.endswith('.h5') or fname.endswith('.hdf5'):
+                    reg_files.append((fname, size))
+        
+        all_items = sorted(dirs) + sorted(reg_files)
+        
+        for fname, size in all_items:
+            is_dir = fname in [d[0] for d in dirs]
+            row = table.rowCount()
+            table.insertRow(row)
+            
+            name_item = QTableWidgetItem(fname)
+            table.setItem(row, 0, name_item)
+            
+            size_str = self._format_size(size)
+            table.setItem(row, 1, QTableWidgetItem(size_str))
+            
+            ftype = 'DIR' if is_dir else 'FILE'
+            table.setItem(row, 2, QTableWidgetItem(ftype))
+    
+    def _format_size(self, size: int) -> str:
+        for unit in ['B', 'KB', 'MB', 'GB']:
+            if size < 1024:
+                return f"{size:.1f} {unit}"
+            size /= 1024
+        return f"{size:.1f} TB"
+    
+    def _ssh_download_selected(self, dialog: QDialog, current_path: str, table: QTableWidget) -> None:
+        selected_rows = table.selectionModel().selectedRows()
+        if not selected_rows:
+            QMessageBox.warning(self, 'Error', 'No file selected')
+            return
+        
+        row = selected_rows[0].row()
+        name_item = table.item(row, 0)
+        type_item = table.item(row, 2)
+        
+        if not name_item or not type_item:
+            return
+        
+        filename = name_item.text()
+        ftype = type_item.text()
+        
+        if ftype == 'DIR':
+            QMessageBox.warning(self, 'Error', 'Cannot download directory')
+            return
+        
+        if not filename.endswith('.h5') and not filename.endswith('.hdf5'):
+            reply = QMessageBox.question(
+                self, 'Warning',
+                f'File {filename} may not be an H5 file. Download anyway?',
+                QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No
+            )
+            if reply != QMessageBox.StandardButton.Yes:
+                return
+        
+        remote_path = f"{current_path}/{filename}" if not current_path.endswith('/') else f"{current_path}{filename}"
+        
+        local_path = os.path.join(self.temp_dir, filename)
+        
+        self.status_bar.showMessage(f'Downloading {filename}...')
+        dialog.close()
+        QApplication.processEvents()
+        
+        try:
+            self.ssh_connection.sftp.get(remote_path, local_path)
+            self.status_bar.showMessage(f'Downloaded {filename}')
+            self.open_file_local(local_path)
+        except Exception as e:
+            self.status_bar.showMessage(f'Download failed: {str(e)}')
+            QMessageBox.critical(self, 'Error', f'Failed to download: {str(e)}')
+    
+    def open_file_local(self, path: str) -> None:
+        try:
+            h5file = self.h5_reader.open_file(path)
+            if h5file:
+                self.files.append(h5file)
+                self.files_list.addItem(h5file.filename)
+                self.current_file = h5file
+                self.h5_reader.current_file = h5file
+                self.update_tree()
+                self.update_info()
+                self.status_bar.showMessage(f'Opened: {h5file.filename}')
+        except Exception as e:
+            QMessageBox.critical(self, 'Error', f'Failed to open file: {str(e)}')
 
 
 if __name__ == '__main__':
