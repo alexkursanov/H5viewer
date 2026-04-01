@@ -71,7 +71,7 @@ class TestMainWindow:
     
     def test_last_cycle_selection_empty(self, main_window):
         assert len(main_window.last_cycle_selected_items) == 0
-        assert main_window.add_lines_btn.isEnabled() == False
+        assert main_window.plot_btn.isEnabled() == False
         assert main_window.total_clear_btn.isEnabled() == False
     
     def test_dependencies_initial_state(self, main_window):
@@ -280,7 +280,7 @@ class TestEdgeCases:
         assert main_window.files == []
     
     def test_add_lines_no_selection(self, main_window):
-        main_window.add_lines()
+        main_window.plot_selected()
         assert main_window.last_cycle_selected_items == []
     
     def test_clear_chart_empty_plot(self, main_window):
@@ -309,14 +309,14 @@ class TestLastCycleTab:
     
     def test_last_cycle_buttons_exist(self, main_window):
         main_window.tab_widget.setCurrentIndex(1)
-        assert main_window.add_lines_btn is not None
+        assert main_window.plot_btn is not None
         assert main_window.remove_selected_btn is not None
         assert main_window.clear_selection_btn is not None
         assert main_window.total_clear_btn is not None
     
     def test_last_cycle_buttons_initially_disabled(self, main_window):
         main_window.tab_widget.setCurrentIndex(1)
-        assert main_window.add_lines_btn.isEnabled() == False
+        assert main_window.plot_btn.isEnabled() == False
         assert main_window.total_clear_btn.isEnabled() == False
 
 

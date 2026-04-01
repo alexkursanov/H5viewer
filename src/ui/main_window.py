@@ -39,10 +39,12 @@ class MainWindow(QMainWindow):
         self.current_file: Optional[H5File] = None
         self.files: List[H5File] = []
         self.current_plot_data: Dict[str, Any] = {}
-        self.last_cycle_selected_items: List[QTreeWidgetItem] = []
+        self.last_cycle_selected_items: List[tuple] = []
         self.last_cycle_plots: List[tuple] = []
         self.last_cycle_ylims: List[float] = [float('inf'), float('-inf')]
         self.last_cycle_xlims: List[float] = [0, 0]
+        self.last_cycle_plot_data: List[tuple] = []
+        self.last_cycle_cached_data: Dict[str, Dict[str, Any]] = {}
 
         self.dep_data: Dict[str, Dict[str, float]] = {}
         self.dep_characteristics: List[str] = []
@@ -264,7 +266,7 @@ class MainWindow(QMainWindow):
         widget = QWidget()
         layout = QVBoxLayout(widget)
         
-        layout.addWidget(QLabel('Select items in tree (up to 7), then click Add Lines:'))
+        layout.addWidget(QLabel('Select items in tree (up to 7), then click Plot:'))
         
         self.last_cycle_selected_list = QListWidget()
         self.last_cycle_selected_list.setMaximumHeight(80)
@@ -296,10 +298,10 @@ class MainWindow(QMainWindow):
         
         btn_layout = QHBoxLayout()
         
-        self.add_lines_btn = QPushButton('Add Lines')
-        self.add_lines_btn.clicked.connect(self.add_lines)
-        self.add_lines_btn.setEnabled(False)
-        btn_layout.addWidget(self.add_lines_btn)
+        self.plot_btn = QPushButton('Plot')
+        self.plot_btn.clicked.connect(self.plot_selected)
+        self.plot_btn.setEnabled(False)
+        btn_layout.addWidget(self.plot_btn)
         
         self.total_clear_btn = QPushButton('Total Clear')
         self.total_clear_btn.clicked.connect(self.clear_last_cycle)
@@ -520,6 +522,8 @@ class MainWindow(QMainWindow):
             self.update_tree()
             self.update_info()
             self.delete_file_btn.setEnabled(True)
+            if self.last_cycle_plot_data:
+                self._redraw_all_plots()
     
     def delete_file(self) -> None:
         current_row = self.files_list.currentRow()
@@ -586,8 +590,8 @@ class MainWindow(QMainWindow):
                     if len(self.last_cycle_selected_items) < 7:
                         self.last_cycle_selected_items.append((group, dataset))
                         self.last_cycle_selected_list.addItem(f"{group}/{dataset}")
-                self.add_lines_btn.setEnabled(len(self.last_cycle_selected_items) > 0)
-                self.total_clear_btn.setEnabled(len(self.last_cycle_selected_items) > 0)
+                self.plot_btn.setEnabled(len(self.last_cycle_selected_items) > 0)
+                self.total_clear_btn.setEnabled(True)
                 self.clear_selection_btn.setEnabled(len(self.last_cycle_selected_items) > 0)
     
     def plot_all_cycles(self, group: str, dataset: str) -> None:
@@ -631,6 +635,8 @@ class MainWindow(QMainWindow):
         points_mod = self.current_file.points_mod
         
         if time is not None and cycle is not None:
+            self.last_cycle_canvas.axes.clear()
+            
             t_start = int(np.max(time) + 1 - cycle - points_mod)
             t_end = int(np.max(time) + 1 - points_mod)
             
@@ -725,9 +731,11 @@ class MainWindow(QMainWindow):
         self.last_cycle_canvas.axes.clear()
         self.last_cycle_plots = []
         self.last_cycle_selected_items = []
+        self.last_cycle_plot_data = []
+        self.last_cycle_cached_data = {}
         self.last_cycle_ylims = [float('inf'), float('-inf')]
         self.last_cycle_xlims = [0, 0]
-        self.add_lines_btn.setEnabled(False)
+        self.plot_btn.setEnabled(False)
         self.total_clear_btn.setEnabled(False)
         self.last_cycle_canvas.draw()
         self.last_cycle_selected_list.clear()
@@ -739,17 +747,17 @@ class MainWindow(QMainWindow):
         if current_row >= 0:
             self.last_cycle_selected_items.pop(current_row)
             self.last_cycle_selected_list.takeItem(current_row)
-            self.add_lines_btn.setEnabled(len(self.last_cycle_selected_items) > 0)
+            self.plot_btn.setEnabled(len(self.last_cycle_selected_items) > 0)
             self.remove_selected_btn.setEnabled(self.last_cycle_selected_list.currentRow() >= 0)
     
     def clear_selection(self) -> None:
         self.last_cycle_selected_items = []
         self.last_cycle_selected_list.clear()
-        self.add_lines_btn.setEnabled(False)
+        self.plot_btn.setEnabled(False)
         self.remove_selected_btn.setEnabled(False)
         self.clear_selection_btn.setEnabled(False)
     
-    def add_lines(self) -> None:
+    def plot_selected(self) -> None:
         if not self.current_file or not self.last_cycle_selected_items:
             return
         
@@ -760,46 +768,174 @@ class MainWindow(QMainWindow):
         if time is None or cycle is None:
             return
         
-        colors = ['blue', 'red', 'green', 'orange', 'purple', 'brown', 'pink']
+        filename = self.current_file.filename
         
-        self.last_cycle_canvas.axes.clear()
-        self.last_cycle_plots = []
-        self.last_cycle_ylims = [float('inf'), float('-inf')]
+        new_items = [(g, d, filename) for g, d in self.last_cycle_selected_items]
         
-        for idx, (group, dataset) in enumerate(self.last_cycle_selected_items):
-            data = self.h5_reader.read_dataset(group, dataset)
+        for item in new_items:
+            if item not in self.last_cycle_plot_data:
+                self.last_cycle_plot_data.append(item)
+        
+        if not hasattr(self, 'last_cycle_cached_data'):
+            self.last_cycle_cached_data = {}
+        
+        for item_group, item_dataset, item_filename in new_items:
+            if item_filename not in self.last_cycle_cached_data:
+                self.last_cycle_cached_data[item_filename] = {}
             
-            if data is not None:
-                t_start = int(np.max(time) + 1 - cycle - points_mod)
-                t_end = int(np.max(time) + 1 - points_mod)
-                
-                min_len = min(len(time), len(data), t_end + 1)
-                t = time[t_start:t_start + min_len]
-                data_cycle = data[t_start:t_start + min_len]
-                t_shift = t - t[0]
-                
-                color = colors[idx % len(colors)]
-                line, = self.last_cycle_canvas.axes.plot(
-                    t_shift, data_cycle, color=color, label=dataset
-                )
-                self.last_cycle_plots.append(line)
-                
-                if np.min(data_cycle) < self.last_cycle_ylims[0]:
-                    self.last_cycle_ylims[0] = np.min(data_cycle)
-                if np.max(data_cycle) > self.last_cycle_ylims[1]:
-                    self.last_cycle_ylims[1] = np.max(data_cycle)
-                
-                if self.last_cycle_xlims[1] == 0 or np.max(t_shift) > self.last_cycle_xlims[1]:
-                    self.last_cycle_xlims = [0, np.max(t_shift)]
+            cache_key = f"{item_group}_{item_dataset}"
+            
+            if cache_key not in self.last_cycle_cached_data[item_filename]:
+                data = self.h5_reader.read_dataset(item_group, item_dataset)
+                if data is not None:
+                    t_start = int(np.max(time) + 1 - cycle - points_mod)
+                    t_end = int(np.max(time) + 1 - points_mod)
+                    min_len = min(len(time), len(data), t_end + 1)
+                    data_cycle = data[t_start:t_start + min_len]
+                    self.last_cycle_cached_data[item_filename][cache_key] = data_cycle
         
-        if self.last_cycle_plots:
-            self.last_cycle_canvas.axes.set_ylim(
-                self.last_cycle_ylims[0] - 0.1 * abs(self.last_cycle_ylims[0]),
-                self.last_cycle_ylims[1] + 0.1 * abs(self.last_cycle_ylims[1])
-            )
-            self.last_cycle_canvas.axes.set_xlim(self.last_cycle_xlims[0], self.last_cycle_xlims[1])
-            self.last_cycle_canvas.axes.set_xlabel('msec')
-            self.last_cycle_canvas.axes.legend()
+        self._redraw_all_plots()
+    
+    def _redraw_all_plots(self) -> None:
+        if not self.last_cycle_plot_data:
+            return
+        
+        time = self.h5_reader.read_dataset('time', '')
+        cycle = self.current_file.cycle
+        points_mod = self.current_file.points_mod
+        
+        if time is None or cycle is None:
+            return
+        
+        unique_datasets = list(set((g, d) for g, d, _ in self.last_cycle_plot_data))
+        
+        cols = 2
+        rows = (len(unique_datasets) + cols - 1) // cols
+        
+        self.last_cycle_canvas.fig.clear()
+        
+        all_filenames = list(set(f for _, _, f in self.last_cycle_plot_data))
+        
+        def get_color(index: int) -> str:
+            hue = index / len(all_filenames) if all_filenames else 0
+            return plt.cm.hsv(hue)
+        
+        file_colors = {}
+        for i, fn in enumerate(all_filenames):
+            file_colors[fn] = get_color(i)
+        
+        plot_idx = 0
+        for group, dataset in unique_datasets:
+            ax = self.last_cycle_canvas.fig.add_subplot(rows, cols, plot_idx + 1)
+            
+            items_for_signal = [item for item in self.last_cycle_plot_data if item[0] == group and item[1] == dataset]
+            
+            for item_group, item_dataset, item_filename in items_for_signal:
+                cache_key = f"{item_group}_{item_dataset}"
+                data_cycle = self.last_cycle_cached_data.get(item_filename, {}).get(cache_key)
+                
+                if data_cycle is not None and len(data_cycle) > 0:
+                    t_start = int(np.max(time) + 1 - cycle - points_mod)
+                    min_len = min(len(time), len(data_cycle))
+                    t = time[t_start:t_start + min_len]
+                    t_shift = t - t[0] if len(t) > 0 else np.arange(len(data_cycle))
+                    
+                    color = file_colors.get(item_filename, 'blue')
+                    ax.plot(t_shift, data_cycle[:len(t_shift)], color=color, label=item_filename)
+            
+            ax.set_xlabel('msec')
+            ax.set_title(f'{dataset}')
+            ax.legend()
+            ax.grid(True)
+            plot_idx += 1
+        
+        self.last_cycle_canvas.fig.tight_layout()
+        self.last_cycle_canvas.draw()
+    
+    def redraw_last_cycle(self) -> None:
+        if not self.last_cycle_plot_data:
+            return
+        
+        current_filename = self.current_file.filename if self.current_file else ''
+        
+        time = self.h5_reader.read_dataset('time', '')
+        cycle = self.current_file.cycle
+        points_mod = self.current_file.points_mod
+        
+        if time is None or cycle is None:
+            return
+        
+        unique_datasets = list(set((g, d) for g, d, _ in self.last_cycle_plot_data))
+        
+        cols = 2
+        rows = (len(unique_datasets) + cols - 1) // cols
+        
+        self.last_cycle_canvas.fig.clear()
+        
+        colors = ['blue', 'red', 'green', 'orange', 'purple', 'brown', 'pink', 'gray', 'cyan', 'magenta']
+        
+        file_colors = {}
+        all_filenames = list(set(f for _, _, f in self.last_cycle_plot_data))
+        for i, fn in enumerate(all_filenames):
+            file_colors[fn] = colors[i % len(colors)]
+        
+        if not hasattr(self, 'last_cycle_cached_data'):
+            self.last_cycle_cached_data = {}
+        
+        plot_idx = 0
+        for group, dataset in unique_datasets:
+            ax = self.last_cycle_canvas.fig.add_subplot(rows, cols, plot_idx + 1)
+            
+            items_for_signal = [item for item in self.last_cycle_plot_data if item[0] == group and item[1] == dataset]
+            
+            for item_group, item_dataset, item_filename in items_for_signal:
+                if item_filename not in self.last_cycle_cached_data:
+                    self.last_cycle_cached_data[item_filename] = {}
+                
+                cache_key = f"{item_group}_{item_dataset}"
+                
+                if cache_key not in self.last_cycle_cached_data[item_filename]:
+                    found_file = None
+                    for f in self.files:
+                        if f.filename == item_filename:
+                            found_file = f
+                            break
+                    
+                    if found_file:
+                        old_current = self.current_file
+                        self.current_file = found_file
+                        self.h5_reader.current_file = found_file
+                        
+                        data = self.h5_reader.read_dataset(item_group, item_dataset)
+                        t_start = int(np.max(time) + 1 - cycle - points_mod)
+                        t_end = int(np.max(time) + 1 - points_mod)
+                        min_len = min(len(time), len(data), t_end + 1) if data is not None else 0
+                        data_cycle = data[t_start:t_start + min_len] if data is not None else None
+                        
+                        self.last_cycle_cached_data[item_filename][cache_key] = data_cycle
+                        
+                        self.current_file = old_current
+                        self.h5_reader.current_file = old_current
+                
+                data_cycle = self.last_cycle_cached_data[item_filename].get(cache_key)
+                
+                if data_cycle is not None and len(data_cycle) > 0:
+                    current_time = self.h5_reader.read_dataset('time', '')
+                    t_start = int(np.max(current_time) + 1 - cycle - points_mod)
+                    min_len = min(len(current_time), len(data_cycle))
+                    t = current_time[t_start:t_start + min_len]
+                    t_shift = t - t[0] if len(t) > 0 else np.arange(len(data_cycle))
+                    
+                    color = file_colors.get(item_filename, 'blue')
+                    ax.plot(t_shift, data_cycle[:len(t_shift)], color=color, label=item_filename)
+            
+            ax.set_xlabel('msec')
+            ax.set_title(f'{dataset}')
+            ax.legend()
+            ax.grid(True)
+            plot_idx += 1
+        
+        self.last_cycle_canvas.fig.tight_layout()
         self.last_cycle_canvas.draw()
     
     def add_dep_data(self) -> None:
