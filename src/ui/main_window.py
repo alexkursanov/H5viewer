@@ -45,6 +45,8 @@ class MainWindow(QMainWindow):
         self.last_cycle_xlims: List[float] = [0, 0]
         self.last_cycle_plot_data: List[tuple] = []
         self.last_cycle_cached_data: Dict[str, Dict[str, Any]] = {}
+        self.last_cycle_page: int = 0
+        self.last_cycle_per_page: int = 6
 
         self.dep_data: Dict[str, Dict[str, float]] = {}
         self.dep_characteristics: List[str] = []
@@ -266,7 +268,7 @@ class MainWindow(QMainWindow):
         widget = QWidget()
         layout = QVBoxLayout(widget)
         
-        layout.addWidget(QLabel('Select items in tree (up to 7), then click Plot:'))
+        layout.addWidget(QLabel('Select items in tree, then click Plot:'))
         
         self.last_cycle_selected_list = QListWidget()
         self.last_cycle_selected_list.setMaximumHeight(80)
@@ -303,12 +305,28 @@ class MainWindow(QMainWindow):
         self.plot_btn.setEnabled(False)
         btn_layout.addWidget(self.plot_btn)
         
+        self.prev_page_btn = QPushButton('<')
+        self.prev_page_btn.clicked.connect(self.prev_last_cycle_page)
+        self.prev_page_btn.setEnabled(False)
+        btn_layout.addWidget(self.prev_page_btn)
+        
+        self.page_label = QLabel('1/1')
+        btn_layout.addWidget(self.page_label)
+        
+        self.next_page_btn = QPushButton('>')
+        self.next_page_btn.clicked.connect(self.next_last_cycle_page)
+        self.next_page_btn.setEnabled(False)
+        btn_layout.addWidget(self.next_page_btn)
+        
         self.total_clear_btn = QPushButton('Total Clear')
         self.total_clear_btn.clicked.connect(self.clear_last_cycle)
         self.total_clear_btn.setEnabled(False)
         btn_layout.addWidget(self.total_clear_btn)
         
         layout.addLayout(btn_layout)
+        
+        self.last_cycle_page = 0
+        self.last_cycle_per_page = 6
         
         return widget
     
@@ -587,10 +605,10 @@ class MainWindow(QMainWindow):
                 self.plot_all_cycles(group, dataset)
             elif self.tab_widget.currentIndex() == 1:
                 if (group, dataset) not in self.last_cycle_selected_items:
-                    if len(self.last_cycle_selected_items) < 7:
-                        self.last_cycle_selected_items.append((group, dataset))
-                        self.last_cycle_selected_list.addItem(f"{group}/{dataset}")
+                    self.last_cycle_selected_items.append((group, dataset))
+                    self.last_cycle_selected_list.addItem(f"{group}/{dataset}")
                 self.plot_btn.setEnabled(len(self.last_cycle_selected_items) > 0)
+                self.remove_selected_btn.setEnabled(len(self.last_cycle_selected_items) > 0)
                 self.total_clear_btn.setEnabled(True)
                 self.clear_selection_btn.setEnabled(len(self.last_cycle_selected_items) > 0)
     
@@ -728,15 +746,20 @@ class MainWindow(QMainWindow):
         self.all_cycles_canvas.draw()
     
     def clear_last_cycle(self) -> None:
-        self.last_cycle_canvas.axes.clear()
+        self.last_cycle_canvas.fig.clear()
+        self.last_cycle_canvas.axes = self.last_cycle_canvas.fig.add_subplot(111)
         self.last_cycle_plots = []
         self.last_cycle_selected_items = []
         self.last_cycle_plot_data = []
         self.last_cycle_cached_data = {}
         self.last_cycle_ylims = [float('inf'), float('-inf')]
         self.last_cycle_xlims = [0, 0]
+        self.last_cycle_page = 0
         self.plot_btn.setEnabled(False)
         self.total_clear_btn.setEnabled(False)
+        self.page_label.setText('1/1')
+        self.prev_page_btn.setEnabled(False)
+        self.next_page_btn.setEnabled(False)
         self.last_cycle_canvas.draw()
         self.last_cycle_selected_list.clear()
         self.remove_selected_btn.setEnabled(False)
@@ -749,6 +772,7 @@ class MainWindow(QMainWindow):
             self.last_cycle_selected_list.takeItem(current_row)
             self.plot_btn.setEnabled(len(self.last_cycle_selected_items) > 0)
             self.remove_selected_btn.setEnabled(self.last_cycle_selected_list.currentRow() >= 0)
+            self.clear_selection_btn.setEnabled(len(self.last_cycle_selected_items) > 0)
     
     def clear_selection(self) -> None:
         self.last_cycle_selected_items = []
@@ -809,24 +833,39 @@ class MainWindow(QMainWindow):
         
         unique_datasets = list(set((g, d) for g, d, _ in self.last_cycle_plot_data))
         
-        cols = 2
-        rows = (len(unique_datasets) + cols - 1) // cols
+        total_pages = max(1, (len(unique_datasets) + self.last_cycle_per_page - 1) // self.last_cycle_per_page)
+        if self.last_cycle_page >= total_pages:
+            self.last_cycle_page = total_pages - 1
+        if self.last_cycle_page < 0:
+            self.last_cycle_page = 0
+        
+        self.page_label.setText(f"{self.last_cycle_page + 1}/{total_pages}")
+        self.prev_page_btn.setEnabled(self.last_cycle_page > 0)
+        self.next_page_btn.setEnabled(self.last_cycle_page < total_pages - 1)
+        
+        cols = 3
+        rows = 2
+        
+        start_idx = self.last_cycle_page * self.last_cycle_per_page
+        end_idx = min(start_idx + self.last_cycle_per_page, len(unique_datasets))
+        page_datasets = unique_datasets[start_idx:end_idx]
         
         self.last_cycle_canvas.fig.clear()
         
         all_filenames = list(set(f for _, _, f in self.last_cycle_plot_data))
         
-        def get_color(index: int) -> str:
-            hue = index / len(all_filenames) if all_filenames else 0
-            return plt.cm.hsv(hue)
+        colors = ['blue', 'red', 'green', 'orange', 'purple', 'brown', 'pink', 'gray', 'cyan', 'magenta',
+                  'navy', 'maroon', 'olive', 'teal', 'silver', 'lime', 'aqua', 'fuchsia', 'yellow', 'black']
         
         file_colors = {}
         for i, fn in enumerate(all_filenames):
-            file_colors[fn] = get_color(i)
+            file_colors[fn] = colors[i % len(colors)]
         
-        plot_idx = 0
-        for group, dataset in unique_datasets:
-            ax = self.last_cycle_canvas.fig.add_subplot(rows, cols, plot_idx + 1)
+        lines = []
+        labels = []
+        
+        for idx, (group, dataset) in enumerate(page_datasets):
+            ax = self.last_cycle_canvas.fig.add_subplot(rows, cols, idx + 1)
             
             items_for_signal = [item for item in self.last_cycle_plot_data if item[0] == group and item[1] == dataset]
             
@@ -841,16 +880,32 @@ class MainWindow(QMainWindow):
                     t_shift = t - t[0] if len(t) > 0 else np.arange(len(data_cycle))
                     
                     color = file_colors.get(item_filename, 'blue')
-                    ax.plot(t_shift, data_cycle[:len(t_shift)], color=color, label=item_filename)
+                    line, = ax.plot(t_shift, data_cycle[:len(t_shift)], color=color, label=item_filename)
+                    if item_filename not in labels:
+                        lines.append(line)
+                        labels.append(item_filename)
             
             ax.set_xlabel('msec')
             ax.set_title(f'{dataset}')
-            ax.legend()
             ax.grid(True)
-            plot_idx += 1
         
-        self.last_cycle_canvas.fig.tight_layout()
+        if lines:
+            self.last_cycle_canvas.fig.legend(lines, labels, loc='upper right', bbox_to_anchor=(0.99, 0.99))
+        
+        self.last_cycle_canvas.fig.tight_layout(rect=(0, 0, 0.95, 0.95))
         self.last_cycle_canvas.draw()
+    
+    def prev_last_cycle_page(self) -> None:
+        if self.last_cycle_page > 0:
+            self.last_cycle_page -= 1
+            self._redraw_all_plots()
+    
+    def next_last_cycle_page(self) -> None:
+        unique_datasets = list(set((g, d) for g, d, _ in self.last_cycle_plot_data))
+        total_pages = max(1, (len(unique_datasets) + self.last_cycle_per_page - 1) // self.last_cycle_per_page)
+        if self.last_cycle_page < total_pages - 1:
+            self.last_cycle_page += 1
+            self._redraw_all_plots()
     
     def redraw_last_cycle(self) -> None:
         if not self.last_cycle_plot_data:
