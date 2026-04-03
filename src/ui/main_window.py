@@ -164,7 +164,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(QLabel('H5 Structure:'))
         
         self.tree_widget = QTreeWidget()
-        self.tree_widget.setHeaderLabel('Structure')
+        self.tree_widget.setHeaderLabels(['Name', 'Value'])
         self.tree_widget.itemClicked.connect(self.on_tree_item_clicked)
         layout.addWidget(self.tree_widget)
         
@@ -315,14 +315,20 @@ class MainWindow(QMainWindow):
         
         if not self.current_file:
             return
-            
+        
+        params = self.h5_reader.get_all_parameters(self.current_file)
+        
         for group in self.current_file.groups:
-            group_item = QTreeWidgetItem([group])
+            group_item = QTreeWidgetItem([group, ''])
             self.tree_widget.addTopLevelItem(group_item)
             
             if group in self.current_file.datasets:
                 for dataset in self.current_file.datasets[group]:
-                    dataset_item = QTreeWidgetItem([dataset])
+                    if group == 'parameters' and dataset in params:
+                        value = params[dataset]
+                        dataset_item = QTreeWidgetItem([dataset, value])
+                    else:
+                        dataset_item = QTreeWidgetItem([dataset, ''])
                     group_item.addChild(dataset_item)
             
             group_item.setExpanded(True)
@@ -354,7 +360,8 @@ class MainWindow(QMainWindow):
             if self.tab_widget.currentIndex() == 0:
                 self.all_cycles_tab.plot(group, dataset)
             elif self.tab_widget.currentIndex() == 1:
-                self.last_cycle_tab.add_selection(group, dataset)
+                if group != 'parameters':
+                    self.last_cycle_tab.add_selection(group, dataset)
     
     def set_single_mode(self) -> None:
         self.all_cycles_tab.single_mode_btn.setChecked(True)

@@ -97,6 +97,27 @@ class H5Reader:
             h5file.Herz = 1000.0 / h5file.cycle
             h5file.points_mod = int(np.max(h5file.time) % h5file.cycle)
     
+    def get_all_parameters(self, h5file: H5File) -> Dict[str, str]:
+        """Get all parameters from HDF5 file as dict."""
+        params = {}
+        if h5file and h5file.fid:
+            try:
+                if 'parameters' in h5file.fid:
+                    for key in h5file.fid['parameters'].keys():
+                        try:
+                            val = h5file.fid[f'/parameters/{key}'][()]
+                            if hasattr(val, 'shape') and val.shape == ():
+                                params[key] = str(val[()]) if val.size == 1 else str(val)
+                            elif hasattr(val, 'shape') and val.shape:
+                                params[key] = f"{val.shape}"
+                            else:
+                                params[key] = str(val)
+                        except Exception:
+                            params[key] = 'N/A'
+            except Exception as e:
+                logger.warning(f"Could not load parameters: {e}")
+        return params
+    
     def read_dataset(self, group: str, dataset: str) -> Optional[np.ndarray]:
         if self.current_file is None:
             return None

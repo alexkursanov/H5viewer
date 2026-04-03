@@ -154,7 +154,7 @@ class TestMainWindowIntegration:
         assert main_window.integrals_tab.integrals_combo is not None
     
     def test_tree_widget_columns(self, main_window):
-        assert main_window.tree_widget.columnCount() == 1
+        assert main_window.tree_widget.columnCount() == 2
     
     def test_files_list_initially_empty(self, main_window):
         assert main_window.files_list.count() == 0
