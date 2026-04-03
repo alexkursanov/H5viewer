@@ -26,14 +26,17 @@ H5reader/
 │   │   └── __init__.py
 │   ├── ui/                # Графический интерфейс
 │   │   ├── main_window.py # Главное окно
+│   │   ├── tabs.py        # Вкладки интерфейса
 │   │   └── __init__.py
 │   └── utils/             # Утилиты
 │       ├── analysis.py    # Анализ данных
 │       ├── exporter.py    # Экспорт в Excel
+│       ├── ssh_client.py  # SSH подключение
 │       └── __init__.py
 └── tests/                 # Тесты
     ├── test_h5_reader.py
-    └── test_analysis.py
+    ├── test_analysis.py
+    └── test_ui.py
 ```
 
 ---
@@ -75,7 +78,7 @@ H5reader/
 ```python
 def open_file(filepath: str) -> H5File:
     """Открыть HDF5 файл и загрузить параметры"""
-    
+
 def read_dataset(group: str, dataset: str) -> Optional[np.ndarray]:
     """Прочитать весь dataset"""
 
@@ -89,11 +92,9 @@ def close_all():
     """Закрыть все файлы"""
 ```
 
-### src/ui/main_window.py
+### src/ui/tabs.py
 
-Главное окно приложения на PyQt6.
-
-**Классы:**
+Вкладки интерфейса. Содержит классы для каждой вкладки.
 
 #### `MatplotlibCanvas`
 
@@ -106,22 +107,74 @@ class MatplotlibCanvas(FigureCanvas):
         # dpi - разрешение
 ```
 
-#### `MainWindow`
+#### `AllCyclesTab`
 
-Главное окно приложения.
+Вкладка графиков всех циклов.
+
+**Атрибуты:**
+- `canvas` — холст для графиков
+- `toolbar` — панель инструментов matplotlib
+- `single_mode_btn`, `multiple_mode_btn` — кнопки режима
+- `show_stimuli_check` — показ стимулов
+- `up_slider`, `down_slider` — слайдеры диапазона X
+
+**Методы:**
+- `plot(group, dataset)` — построение графика
+- `clear_chart()` — очистка графика
+- `update_x_range()` — обновление диапазона X
+
+#### `LastCycleTab`
+
+Вкладка графиков последнего цикла.
+
+**Атрибуты:**
+- `selected_list` — список выбранных элементов
+- `plot_btn`, `total_clear_btn` — кнопки управления
+- `page_label` — метка страницы
+- `per_page` — графиков на страницу (6)
+
+**Методы:**
+- `add_selection(group, dataset)` — добавление в выбор
+- `remove_selected()` — удаление выбранного
+- `clear_selection()` — очистка выбора
+- `plot()` — построение графиков
+- `prev_page()`, `next_page()` — навигация
+
+#### `DependenciesTab`
+
+Вкладка зависимостей характеристик.
+
+**Атрибуты:**
+- `table` — таблица данных
+- `canvas`, `toolbar` — графики
+- `x_axis_combo`, `char_combo` — выбор осей
+
+#### `IntegralsTab`
+
+Вкладка интегралов токов кальция.
+
+**Атрибуты:**
+- `table` — таблица данных
+- `canvas`, `toolbar` — графики
+- `x_axis_combo`, `integrals_combo` — выбор осей
+
+### src/ui/main_window.py
+
+Главное окно приложения на PyQt6.
+
+#### `MainWindow`
 
 **Атрибуты:**
 - `h5_reader` — экземпляр H5Reader
 - `current_file` — текущий открытый файл
 - `files` — список всех открытых файлов
+- `all_cycles_tab`, `last_cycle_tab`, `dependencies_tab`, `integrals_tab` — вкладки
 
 **Методы:**
 - `setup_ui()` — инициализация интерфейса
 - `open_file()` — диалог открытия файла
 - `load_file(filepath)` — загрузка файла
 - `update_tree()` — обновление дерева структуры
-- `plot_all_cycles(group, dataset)` — построение графика всех циклов
-- `plot_last_cycle(group, dataset)` — построение графика последнего цикла
 
 ### src/utils/analysis.py
 
@@ -185,6 +238,35 @@ ExcelExporter.save_dependencies(dep_data, filename)
 ExcelExporter.save_integrals(int_data, filename)
 ```
 
+### src/utils/ssh_client.py
+
+Модуль SSH подключения.
+
+#### `SSHConnection`
+
+Класс для управления SSH/SFTP соединением.
+
+```python
+def connect(host, port, username, password, key_file=None, timeout=30) -> bool:
+    """Подключиться к SSH серверу"""
+
+def disconnect():
+    """Отключиться"""
+
+def list_directory(path) -> list:
+    """Список файлов в директории"""
+
+def list_directory_attr(path) -> list:
+    """Список файлов с атрибутами"""
+
+def is_connected() -> bool:
+    """Проверить подключение"""
+```
+
+#### `SSHDialog`
+
+Диалог настроек SSH подключения.
+
 ---
 
 ## Разработка
@@ -192,7 +274,7 @@ ExcelExporter.save_integrals(int_data, filename)
 ### Настройка окружения
 
 ```bash
-# Создание виртуального окружения (рекомендуется)
+# Создание виртуального окружения
 python -m venv venv
 source venv/bin/activate  # Linux/Mac
 # или
@@ -230,8 +312,11 @@ black src/
 ### Запуск тестов
 
 ```bash
+# Все тесты
+pytest tests/ -v
+
 # Все тесты с покрытием
-pytest tests/ -v --cov=src
+pytest tests/ --cov=src -v
 
 # Только определенный файл
 pytest tests/test_h5_reader.py -v
@@ -280,29 +365,13 @@ class TestNewFeature:
 
 ---
 
-## Согласование с MATLAB версией
-
-| MATLAB | Python | Описание |
-|--------|--------|----------|
-| `h5read` | `h5py.File['dataset'][:]` | Чтение данных |
-| `uicontrol` | QWidget | UI компоненты |
-| `uiaxes` | MatplotlibCanvas | Графики |
-| `uitable` | QTableWidget | Таблицы |
-| `uitree` | QTreeWidget | Дерево |
-
-### Соответствие вкладок
-
-1. **All Cycles** → графики всех данных
-2. **Last Cycle** → графики последнего цикла (до 7 графиков)
-3. **Dependencies** → таблица + графики зависимостей
-4. **Integrals** → расчет интегралов кальция
-
----
-
 ## TODO
 
-- [ ] Добавить больше UI функций
-- [ ] Реализовать полный экспорт в Excel
-- [ ] Добавить обработку ошибок
-- [ ] Улучшить производительность
-- [ ] Добавить локализацию
+- [x] Рефакторинг main_window - выделение табов
+- [x] Логирование
+- [x] Обработка ошибок
+- [x] Документация
+- [ ] Drag & Drop файлов
+- [ ] Поиск в tree
+- [ ] Сохранение настроек
+- [ ] Пресеты графиков
