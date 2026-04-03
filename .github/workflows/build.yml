@@ -3,6 +3,8 @@ name: Build Windows Executable
 on:
   push:
     branches: [main]
+    tags:
+      - 'v*'
   workflow_dispatch:
 
 jobs:
@@ -23,6 +25,10 @@ jobs:
         pip install -r requirements.txt
         pip install pyinstaller
     
+    - name: Get version
+      id: version
+      run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+    
     - name: Build executable
       run: |
         pyinstaller --onefile --windowed --name H5Reader --add-data "docs;docs" main.py
@@ -32,3 +38,23 @@ jobs:
       with:
         name: H5Reader-Windows
         path: dist/H5Reader.exe
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    
+    steps:
+    - name: Download artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: H5Reader-Windows
+        path: .
+    
+    - name: Create Release
+      uses: softprops/action-gh-release@v1
+      with:
+        files: H5Reader.exe
+        generate_release_notes: true
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
