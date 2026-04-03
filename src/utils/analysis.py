@@ -1,11 +1,62 @@
+"""
+Data analysis utilities for H5 Reader.
+
+Provides functions for analyzing cardiomyocte simulation data.
+"""
 import numpy as np
 from typing import Dict, Any, Optional
 
 
+def _calculate_apd(data: np.ndarray, start_stim: int, levels: Dict[str, float]) -> Dict[str, float]:
+    """
+    Calculate APD at different levels.
+    
+    Args:
+        data: Signal data
+        start_stim: Stimulation start index
+        levels: Dict of level_name -> fraction (e.g., {'V20': 0.8, 'V50': 0.5})
+    
+    Returns:
+        Dict with APD values
+    """
+    results = {}
+    min_val = data[start_stim] if start_stim < len(data) else data[0]
+    max_val = np.max(data)
+    ampl = max_val - min_val
+    
+    tVmax = np.argmax(data) - start_stim
+    
+    for name, fraction in levels.items():
+        threshold = min_val + fraction * ampl
+        indices = np.where(data > threshold)[0]
+        duration = indices[-1] - (tVmax + start_stim) if len(indices) > 0 else 0
+        results[name] = duration
+    
+    return results
+
+
 class DataAnalyzer:
+    """
+    Analyzer for cardiomyocyte simulation data.
+    
+    Provides methods to calculate various characteristics like APD, force, calcium, etc.
+    """
+    
     @staticmethod
     def calculate_characteristics(data: np.ndarray, time: np.ndarray, 
                                   cycle: int, start_stim: int = 10) -> Dict[str, Any]:
+        """
+        Calculate voltage characteristics including APD.
+        
+        Args:
+            data: Voltage data array
+            time: Time array
+            cycle: Cycle length
+            start_stim: Stimulation start index
+        
+        Returns:
+            Dict with V_max, V_min, APD values, etc.
+        """
         results = {}
         
         if data is None or len(data) == 0:
@@ -16,34 +67,31 @@ class DataAnalyzer:
         if np.max(data) == np.min(data):
             return {'error': 'Constant data'}
         
-        tVmax = np.argmax(data) - start_stim
-        
-        V20 = 0.8 * ampl + np.min(data)
-        V50 = 0.5 * ampl + np.min(data)
-        V90 = 0.1 * ampl + np.min(data)
-        
-        Vup = np.where(data > V20)[0]
-        APD20 = Vup[-1] - (tVmax + start_stim) if len(Vup) > 0 else 0
-        
-        Vup = np.where(data > V50)[0]
-        APD50 = Vup[-1] - (tVmax + start_stim) if len(Vup) > 0 else 0
-        
-        Vup = np.where(data > V90)[0]
-        APD90 = Vup[-1] - (tVmax + start_stim) if len(Vup) > 0 else 0
+        apd_results = _calculate_apd(data, start_stim, {
+            'APD20': 0.8, 'APD50': 0.5, 'APD90': 0.1
+        })
         
         results['V_max'] = np.max(data)
         results['V_min'] = np.min(data)
         results['V_ampl'] = ampl
-        results['tV_max'] = tVmax
-        results['APD20'] = APD20
-        results['APD50'] = APD50
-        results['APD90'] = APD90
+        results['tV_max'] = np.argmax(data) - start_stim
+        results.update(apd_results)
         
         return results
     
     @staticmethod
     def calculate_force_characteristics(data: np.ndarray, 
                                         start_stim: int = 10) -> Dict[str, Any]:
+        """
+        Calculate force characteristics.
+        
+        Args:
+            data: Force data array
+            start_stim: Stimulation start index
+        
+        Returns:
+            Dict with FXSE_max, FXSE_D values, etc.
+        """
         results = {}
         
         if data is None or len(data) == 0:
@@ -52,20 +100,11 @@ class DataAnalyzer:
         min_val = data[start_stim] if start_stim < len(data) else data[0]
         ampl = np.max(data) - min_val
         
+        apd_results = _calculate_apd(data, start_stim, {
+            'FXSE_D50': 0.5, 'FXSE_D70': 0.3, 'FXSE_D90': 0.1
+        })
+        
         tFmax = np.argmax(data) - start_stim
-        
-        F50 = 0.5 * ampl + min_val
-        F70 = 0.3 * ampl + min_val
-        F90 = 0.1 * ampl + min_val
-        
-        Fup = np.where(data > F50)[0]
-        FXSE_D50 = Fup[-1] - (tFmax + start_stim) if len(Fup) > 0 else 0
-        
-        Fup = np.where(data > F70)[0]
-        FXSE_D70 = Fup[-1] - (tFmax + start_stim) if len(Fup) > 0 else 0
-        
-        Fup = np.where(data > F90)[0]
-        FXSE_D90 = Fup[-1] - (tFmax + start_stim) if len(Fup) > 0 else 0
         
         DFup = np.diff(data[:tFmax+1]) if tFmax > 0 else []
         DFdown = np.diff(data[tFmax:]) if tFmax < len(data) - 1 else []
@@ -74,9 +113,7 @@ class DataAnalyzer:
         results['FXSE_min'] = min_val
         results['FXSE_ampl'] = ampl
         results['tFXSE_max'] = tFmax
-        results['FXSE_D50'] = FXSE_D50
-        results['FXSE_D70'] = FXSE_D70
-        results['FXSE_D90'] = FXSE_D90
+        results.update(apd_results)
         results['DF_max'] = np.max(DFup) if len(DFup) > 0 else 0
         results['DF_min'] = np.min(DFdown) if len(DFdown) > 0 else 0
         results['DF_max_norm'] = np.max(DFup) / ampl if ampl > 0 else 0
@@ -87,6 +124,16 @@ class DataAnalyzer:
     @staticmethod
     def calculate_calcium_characteristics(data: np.ndarray, 
                                           start_stim: int = 10) -> Dict[str, Any]:
+        """
+        Calculate calcium characteristics.
+        
+        Args:
+            data: Calcium data array
+            start_stim: Stimulation start index
+        
+        Returns:
+            Dict with Cai_max, Cai_D values, etc.
+        """
         results = {}
         
         if data is None or len(data) == 0:
@@ -95,39 +142,31 @@ class DataAnalyzer:
         min_val = data[start_stim] if start_stim < len(data) else data[0]
         ampl = np.max(data) - min_val
         
-        tCamax = np.argmax(data) - start_stim
-        
-        Ca10 = 0.9 * ampl + min_val
-        Ca50 = 0.5 * ampl + min_val
-        Ca70 = 0.3 * ampl + min_val
-        Ca90 = 0.1 * ampl + min_val
-        
-        Caup = np.where(data > Ca10)[0]
-        CaD10 = Caup[-1] - (tCamax + start_stim) if len(Caup) > 0 else 0
-        
-        Caup = np.where(data > Ca50)[0]
-        CaD50 = Caup[-1] - (tCamax + start_stim) if len(Caup) > 0 else 0
-        
-        Caup = np.where(data > Ca70)[0]
-        CaD70 = Caup[-1] - (tCamax + start_stim) if len(Caup) > 0 else 0
-        
-        Caup = np.where(data > Ca90)[0]
-        CaD90 = Caup[-1] - (tCamax + start_stim) if len(Caup) > 0 else 0
+        apd_results = _calculate_apd(data, start_stim, {
+            'Cai_D10': 0.9, 'Cai_D50': 0.5, 'Cai_D70': 0.3, 'Cai_D90': 0.1
+        })
         
         results['Cai_max'] = np.max(data) * 1000
         results['Cai_min'] = min_val * 1000
         results['Cai_ampl'] = ampl * 1000
-        results['tCai_max'] = tCamax
-        results['Cai_D10'] = CaD10
-        results['Cai_D50'] = CaD50
-        results['Cai_D70'] = CaD70
-        results['Cai_D90'] = CaD90
+        results['tCai_max'] = np.argmax(data) - start_stim
+        results.update(apd_results)
         
         return results
     
     @staticmethod
     def calculate_length_characteristics(data: np.ndarray, 
                                           start_stim: int = 10) -> Dict[str, Any]:
+        """
+        Calculate length characteristics.
+        
+        Args:
+            data: Length data array
+            start_stim: Stimulation start index
+        
+        Returns:
+            Dict with l1_diast, l1_syst, etc.
+        """
         results = {}
         
         if data is None or len(data) == 0:
@@ -150,6 +189,17 @@ class DataAnalyzer:
     def calculate_calcium_integrals(data_dict: Dict[str, np.ndarray], 
                                     params: Dict[str, float],
                                     cycle: int) -> Dict[str, float]:
+        """
+        Calculate calcium handling integrals.
+        
+        Args:
+            data_dict: Dict of current names to data arrays
+            params: Dict of parameters (V_jSR, V_c, etc.)
+            cycle: Cycle length
+        
+        Returns:
+            Dict with integral values
+        """
         results = {}
         
         VjSR = params.get('V_jSR', 1)
@@ -196,6 +246,18 @@ class DataAnalyzer:
     @staticmethod
     def get_last_cycle_data(time: np.ndarray, data: np.ndarray, 
                             cycle: int, points_mod: int) -> tuple:
+        """
+        Extract data for the last cycle.
+        
+        Args:
+            time: Full time array
+            data: Full data array
+            cycle: Cycle length
+            points_mod: Points modulo
+        
+        Returns:
+            Tuple of (shifted_time, cycle_data)
+        """
         if time is None or data is None:
             return None, None
             

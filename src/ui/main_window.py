@@ -1,5 +1,4 @@
 from typing import Optional, List, Dict, Any
-
 from PyQt6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, QTabWidget,
     QTreeWidget, QTreeWidgetItem, QListWidget, QListWidgetItem,
@@ -10,30 +9,26 @@ from PyQt6.QtWidgets import (
 )
 from PyQt6.QtCore import Qt, QTimer
 from PyQt6.QtGui import QAction
-from matplotlib.backends.backend_qtagg import FigureCanvasQTAgg as FigureCanvas
-from matplotlib.backends.backend_qt import NavigationToolbar2QT as NavigationToolbar
-from matplotlib.figure import Figure
-import matplotlib.pyplot as plt
 import numpy as np
 import logging
 import os
 import tempfile
-import shutil
 
 from src.core.h5_reader import H5Reader, H5File
 from src.utils.ssh_client import SSHConnection, SSHDialog
+from src.ui.tabs import AllCyclesTab, LastCycleTab, DependenciesTab, IntegralsTab
 
 
 VERSION = '1.0'
 AUTHOR = 'Nathalie A. Balakina-Vikulova'
 
+logger = logging.getLogger(__name__)
 
-class MatplotlibCanvas(FigureCanvas):
-    def __init__(self, parent: Optional[QWidget] = None, width: float = 6, height: float = 4, dpi: int = 100) -> None:
-        self.fig: Figure = Figure(figsize=(width, height), dpi=dpi)
-        self.axes = self.fig.add_subplot(111)
-        super().__init__(self.fig)
-        self.setParent(parent)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+)
+
 
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
@@ -41,26 +36,14 @@ class MainWindow(QMainWindow):
         self.h5_reader: H5Reader = H5Reader()
         self.current_file: Optional[H5File] = None
         self.files: List[H5File] = []
-        self.current_plot_data: Dict[str, Any] = {}
-        self.last_cycle_selected_items: List[tuple] = []
-        self.last_cycle_plots: List[tuple] = []
-        self.last_cycle_ylims: List[float] = [float('inf'), float('-inf')]
-        self.last_cycle_xlims: List[float] = [0, 0]
-        self.last_cycle_plot_data: List[tuple] = []
-        self.last_cycle_cached_data: Dict[str, Dict[str, Any]] = {}
-        self.last_cycle_page: int = 0
-        self.last_cycle_per_page: int = 6
-
-        self.dep_data: Dict[str, Dict[str, float]] = {}
-        self.dep_characteristics: List[str] = []
-        self.dep_files: List[str] = []
-
-        self.int_data: Dict[str, Dict[str, float]] = {}
-        self.int_characteristics: List[str] = []
-        self.int_files: List[str] = []
         
         self.ssh_connection = SSHConnection()
         self.temp_dir = tempfile.mkdtemp()
+        
+        self.all_cycles_tab: Optional[AllCyclesTab] = None
+        self.last_cycle_tab: Optional[LastCycleTab] = None
+        self.dependencies_tab: Optional[DependenciesTab] = None
+        self.integrals_tab: Optional[IntegralsTab] = None
         
         self.setup_ui()
 
@@ -71,7 +54,7 @@ class MainWindow(QMainWindow):
         self._create_menu()
         self._create_central_widget()
         self._create_status_bar()
-        
+
     def _create_menu(self) -> None:
         menubar = self.menuBar()
         
@@ -142,7 +125,7 @@ class MainWindow(QMainWindow):
         about_action = QAction('About', self)
         about_action.triggered.connect(self.show_about)
         help_menu.addAction(about_action)
-        
+
     def _create_central_widget(self) -> None:
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
@@ -159,7 +142,7 @@ class MainWindow(QMainWindow):
         splitter.setStretchFactor(1, 4)
         
         layout.addWidget(splitter)
-        
+
     def _create_left_panel(self) -> QWidget:
         frame = QFrame()
         frame.setFrameShape(QFrame.Shape.StyledPanel)
@@ -193,301 +176,46 @@ class MainWindow(QMainWindow):
     def _create_right_panel(self) -> QWidget:
         self.tab_widget = QTabWidget()
         
-        self.all_cycles_tab = self._create_all_cycles_tab()
-        self.last_cycle_tab = self._create_last_cycle_tab()
-        self.dependencies_tab = self._create_dependencies_tab()
-        self.integrals_tab = self._create_integrals_tab()
+        self.all_cycles_tab = AllCyclesTab(self, self.h5_reader, lambda: self.current_file)
+        self.last_cycle_tab = LastCycleTab(self, self.h5_reader, lambda: self.current_file)
+        self.dependencies_tab = DependenciesTab(self)
+        self.integrals_tab = IntegralsTab(self)
         
-        self.tab_widget.addTab(self.all_cycles_tab, 'All Cycles')
-        self.tab_widget.addTab(self.last_cycle_tab, 'Last Cycle')
-        self.tab_widget.addTab(self.dependencies_tab, 'Dependencies')
-        self.tab_widget.addTab(self.integrals_tab, 'Integrals')
+        self._connect_tab_signals()
+        
+        self.tab_widget.addTab(self.all_cycles_tab.get_widget(), 'All Cycles')
+        self.tab_widget.addTab(self.last_cycle_tab.get_widget(), 'Last Cycle')
+        self.tab_widget.addTab(self.dependencies_tab.get_widget(), 'Dependencies')
+        self.tab_widget.addTab(self.integrals_tab.get_widget(), 'Integrals')
         
         return self.tab_widget
     
-    def _create_all_cycles_tab(self) -> QWidget:
-        widget = QWidget()
-        layout = QVBoxLayout(widget)
-        
-        toolbar = QWidget()
-        toolbar_layout = QHBoxLayout(toolbar)
-        
-        self.mode_switch_label = QLabel('Mode:')
-        toolbar_layout.addWidget(self.mode_switch_label)
-        
-        self.single_mode_btn = QPushButton('Single')
-        self.single_mode_btn.setCheckable(True)
-        self.single_mode_btn.setChecked(True)
-        self.single_mode_btn.clicked.connect(self.set_single_mode)
-        toolbar_layout.addWidget(self.single_mode_btn)
-        
-        self.multiple_mode_btn = QPushButton('Multiple')
-        self.multiple_mode_btn.setCheckable(True)
-        self.multiple_mode_btn.clicked.connect(self.set_multiple_mode)
-        toolbar_layout.addWidget(self.multiple_mode_btn)
-        
-        toolbar_layout.addStretch()
-        
-        self.show_stimuli_check = QPushButton('Show Stimuli')
-        self.show_stimuli_check.setCheckable(True)
-        self.show_stimuli_check.clicked.connect(self.toggle_stimuli)
-        toolbar_layout.addWidget(self.show_stimuli_check)
-        
-        self.clear_chart_btn = QPushButton('Clear Chart')
-        self.clear_chart_btn.clicked.connect(self.clear_all_cycles_chart)
-        toolbar_layout.addWidget(self.clear_chart_btn)
-        
-        layout.addWidget(toolbar)
-        
-        splitter = QSplitter(Qt.Orientation.Vertical)
-        
-        self.all_cycles_canvas = MatplotlibCanvas(widget)
-        self.all_cycles_toolbar = NavigationToolbar(self.all_cycles_canvas, widget)
-        splitter.addWidget(self.all_cycles_toolbar)
-        splitter.addWidget(self.all_cycles_canvas)
-        
-        sliders_widget = QWidget()
-        sliders_layout = QVBoxLayout(sliders_widget)
-        
-        sliders_layout.addWidget(QLabel('X-Axis Range:'))
-        
-        up_slider_row = QWidget()
-        up_slider_row_layout = QHBoxLayout(up_slider_row)
-        up_slider_row_layout.setContentsMargins(0, 0, 0, 0)
-        up_slider_row_layout.addWidget(QLabel('Up:'))
-        self.up_slider = QSlider(Qt.Orientation.Horizontal)
-        self.up_slider.setMinimum(0)
-        self.up_slider.setMaximum(100)
-        self.up_slider.setValue(0)
-        self.up_slider.valueChanged.connect(self.update_x_range)
-        up_slider_row_layout.addWidget(self.up_slider)
-        self.up_slider_value = QLabel('0')
-        up_slider_row_layout.addWidget(self.up_slider_value)
-        sliders_layout.addWidget(up_slider_row)
-        
-        down_slider_row = QWidget()
-        down_slider_row_layout = QHBoxLayout(down_slider_row)
-        down_slider_row_layout.setContentsMargins(0, 0, 0, 0)
-        down_slider_row_layout.addWidget(QLabel('Down:'))
-        self.down_slider = QSlider(Qt.Orientation.Horizontal)
-        self.down_slider.setMinimum(0)
-        self.down_slider.setMaximum(100)
-        self.down_slider.setValue(100)
-        self.down_slider.valueChanged.connect(self.update_x_range)
-        down_slider_row_layout.addWidget(self.down_slider)
-        self.down_slider_value = QLabel('100')
-        down_slider_row_layout.addWidget(self.down_slider_value)
-        sliders_layout.addWidget(down_slider_row)
-        
-        self.current_plot_data = {}
-        
-        splitter.addWidget(sliders_widget)
-        
-        layout.addWidget(splitter)
-        
-        return widget
-    
-    def _create_last_cycle_tab(self) -> QWidget:
-        widget = QWidget()
-        layout = QVBoxLayout(widget)
-        
-        layout.addWidget(QLabel('Select items in tree, then click Plot:'))
-        
-        self.last_cycle_selected_list = QListWidget()
-        self.last_cycle_selected_list.setMaximumHeight(80)
-        layout.addWidget(self.last_cycle_selected_list)
-        
-        selection_btns = QHBoxLayout()
-        
-        self.remove_selected_btn = QPushButton('Remove Selected')
-        self.remove_selected_btn.setEnabled(False)
-        self.remove_selected_btn.clicked.connect(self.remove_selected_item)
-        selection_btns.addWidget(self.remove_selected_btn)
-        
-        self.clear_selection_btn = QPushButton('Clear Selection')
-        self.clear_selection_btn.setEnabled(False)
-        self.clear_selection_btn.clicked.connect(self.clear_selection)
-        selection_btns.addWidget(self.clear_selection_btn)
-        
-        selection_btns.addStretch()
-        layout.addLayout(selection_btns)
-        
-        splitter = QSplitter(Qt.Orientation.Vertical)
-        
-        self.last_cycle_canvas = MatplotlibCanvas(widget)
-        self.last_cycle_toolbar = NavigationToolbar(self.last_cycle_canvas, widget)
-        splitter.addWidget(self.last_cycle_toolbar)
-        splitter.addWidget(self.last_cycle_canvas)
-        
-        layout.addWidget(splitter)
-        
-        btn_layout = QHBoxLayout()
-        
-        self.plot_btn = QPushButton('Plot')
-        self.plot_btn.clicked.connect(self.plot_selected)
-        self.plot_btn.setEnabled(False)
-        btn_layout.addWidget(self.plot_btn)
-        
-        self.prev_page_btn = QPushButton('<')
-        self.prev_page_btn.clicked.connect(self.prev_last_cycle_page)
-        self.prev_page_btn.setEnabled(False)
-        btn_layout.addWidget(self.prev_page_btn)
-        
-        self.page_label = QLabel('1/1')
-        btn_layout.addWidget(self.page_label)
-        
-        self.next_page_btn = QPushButton('>')
-        self.next_page_btn.clicked.connect(self.next_last_cycle_page)
-        self.next_page_btn.setEnabled(False)
-        btn_layout.addWidget(self.next_page_btn)
-        
-        self.total_clear_btn = QPushButton('Total Clear')
-        self.total_clear_btn.clicked.connect(self.clear_last_cycle)
-        self.total_clear_btn.setEnabled(False)
-        btn_layout.addWidget(self.total_clear_btn)
-        
-        layout.addLayout(btn_layout)
-        
-        self.last_cycle_page = 0
-        self.last_cycle_per_page = 6
-        
-        return widget
-    
-    def _create_dependencies_tab(self) -> QWidget:
-        widget = QWidget()
-        layout = QHBoxLayout(widget)
-        
-        left = QWidget()
-        left_layout = QVBoxLayout(left)
-        
-        left_layout.addWidget(QLabel('Data Table:'))
-        
-        self.dep_table = QTableWidget()
-        left_layout.addWidget(self.dep_table)
-        
-        btn_row = QWidget()
-        btn_row_layout = QHBoxLayout(btn_row)
-        
-        self.new_dep_data_btn = QPushButton('New Data')
-        self.new_dep_data_btn.clicked.connect(self.add_dep_data)
-        btn_row_layout.addWidget(self.new_dep_data_btn)
-        
-        self.sort_dep_hz_btn = QPushButton('Sort on Hz')
-        self.sort_dep_hz_btn.setEnabled(False)
-        self.sort_dep_hz_btn.clicked.connect(self.sort_dep_on_hz)
-        btn_row_layout.addWidget(self.sort_dep_hz_btn)
-        
-        self.sort_dep_cl_btn = QPushButton('Sort on CL')
-        self.sort_dep_cl_btn.setEnabled(False)
-        self.sort_dep_cl_btn.clicked.connect(self.sort_dep_on_cl)
-        btn_row_layout.addWidget(self.sort_dep_cl_btn)
-        
-        self.save_dep_table_btn = QPushButton('Save to XLS')
-        self.save_dep_table_btn.setEnabled(False)
-        self.save_dep_table_btn.clicked.connect(self.save_dep_table_to_excel)
-        btn_row_layout.addWidget(self.save_dep_table_btn)
-        
-        left_layout.addWidget(btn_row)
-        
-        layout.addWidget(left, 1)
-        
-        right = QWidget()
-        right_layout = QVBoxLayout(right)
-        
-        controls = QWidget()
-        controls_layout = QHBoxLayout(controls)
-        
-        controls_layout.addWidget(QLabel('X Axis:'))
-        self.x_axis_dep_combo = QComboBox()
-        controls_layout.addWidget(self.x_axis_dep_combo)
-        
-        controls_layout.addWidget(QLabel('Characteristics:'))
-        self.char_dep_combo = QComboBox()
-        controls_layout.addWidget(self.char_dep_combo)
-        
-        self.draw_dep_chart_btn = QPushButton('Draw Chart')
-        self.draw_dep_chart_btn.setEnabled(False)
-        self.draw_dep_chart_btn.clicked.connect(self.draw_dep_chart)
-        controls_layout.addWidget(self.draw_dep_chart_btn)
-        
-        right_layout.addWidget(controls)
-        
-        self.dep_chart_canvas = MatplotlibCanvas(widget)
-        self.dep_chart_toolbar = NavigationToolbar(self.dep_chart_canvas, widget)
-        right_layout.addWidget(self.dep_chart_toolbar)
-        right_layout.addWidget(self.dep_chart_canvas)
-        
-        layout.addWidget(right, 2)
-        
-        return widget
-    
-    def _create_integrals_tab(self) -> QWidget:
-        widget = QWidget()
-        layout = QHBoxLayout(widget)
-        
-        left = QWidget()
-        left_layout = QVBoxLayout(left)
-        
-        left_layout.addWidget(QLabel('Integrals Table:'))
-        
-        self.int_table = QTableWidget()
-        left_layout.addWidget(self.int_table)
-        
-        btn_row = QWidget()
-        btn_row_layout = QHBoxLayout(btn_row)
-        
-        self.new_int_data_btn = QPushButton('New Data')
-        self.new_int_data_btn.clicked.connect(self.add_int_data)
-        btn_row_layout.addWidget(self.new_int_data_btn)
-        
-        self.sort_int_hz_btn = QPushButton('Sort on Hz')
-        self.sort_int_hz_btn.setEnabled(False)
-        self.sort_int_hz_btn.clicked.connect(self.sort_int_on_hz)
-        btn_row_layout.addWidget(self.sort_int_hz_btn)
-        
-        self.sort_int_cl_btn = QPushButton('Sort on CL')
-        self.sort_int_cl_btn.setEnabled(False)
-        self.sort_int_cl_btn.clicked.connect(self.sort_int_on_cl)
-        btn_row_layout.addWidget(self.sort_int_cl_btn)
-        
-        self.save_int_table_btn = QPushButton('Save to XLS')
-        self.save_int_table_btn.setEnabled(False)
-        self.save_int_table_btn.clicked.connect(self.save_int_table_to_excel)
-        btn_row_layout.addWidget(self.save_int_table_btn)
-        
-        left_layout.addWidget(btn_row)
-        
-        layout.addWidget(left, 1)
-        
-        right = QWidget()
-        right_layout = QVBoxLayout(right)
-        
-        controls = QWidget()
-        controls_layout = QHBoxLayout(controls)
-        
-        controls_layout.addWidget(QLabel('X Axis:'))
-        self.x_axis_int_combo = QComboBox()
-        controls_layout.addWidget(self.x_axis_int_combo)
-        
-        controls_layout.addWidget(QLabel('Integrals:'))
-        self.integrals_combo = QComboBox()
-        controls_layout.addWidget(self.integrals_combo)
-        
-        self.draw_int_chart_btn = QPushButton('Draw Chart')
-        self.draw_int_chart_btn.setEnabled(False)
-        self.draw_int_chart_btn.clicked.connect(self.draw_int_chart)
-        controls_layout.addWidget(self.draw_int_chart_btn)
-        
-        right_layout.addWidget(controls)
-        
-        self.int_chart_canvas = MatplotlibCanvas(widget)
-        self.int_chart_toolbar = NavigationToolbar(self.int_chart_canvas, widget)
-        right_layout.addWidget(self.int_chart_toolbar)
-        right_layout.addWidget(self.int_chart_canvas)
-        
-        layout.addWidget(right, 2)
-        
-        return widget
+    def _connect_tab_signals(self) -> None:
+        self.all_cycles_tab.single_mode_btn.clicked.connect(self.set_single_mode)
+        self.all_cycles_tab.multiple_mode_btn.clicked.connect(self.set_multiple_mode)
+        self.all_cycles_tab.show_stimuli_check.clicked.connect(self.toggle_stimuli)
+        self.all_cycles_tab.clear_chart_btn.clicked.connect(self.all_cycles_tab.clear_chart)
+        self.all_cycles_tab.up_slider.valueChanged.connect(self.all_cycles_tab.update_x_range)
+        self.all_cycles_tab.down_slider.valueChanged.connect(self.all_cycles_tab.update_x_range)
+        
+        self.last_cycle_tab.plot_btn.clicked.connect(self.last_cycle_tab.plot)
+        self.last_cycle_tab.prev_page_btn.clicked.connect(self.last_cycle_tab.prev_page)
+        self.last_cycle_tab.next_page_btn.clicked.connect(self.last_cycle_tab.next_page)
+        self.last_cycle_tab.total_clear_btn.clicked.connect(self.last_cycle_tab.clear)
+        self.last_cycle_tab.remove_selected_btn.clicked.connect(self.last_cycle_tab.remove_selected)
+        self.last_cycle_tab.clear_selection_btn.clicked.connect(self.last_cycle_tab.clear_selection)
+        
+        self.dependencies_tab.new_data_btn.clicked.connect(self.add_dep_data)
+        self.dependencies_tab.sort_hz_btn.clicked.connect(self.sort_dep_on_hz)
+        self.dependencies_tab.sort_cl_btn.clicked.connect(self.sort_dep_on_cl)
+        self.dependencies_tab.save_btn.clicked.connect(self.save_dep_table_to_excel)
+        self.dependencies_tab.draw_chart_btn.clicked.connect(self.draw_dep_chart)
+        
+        self.integrals_tab.new_data_btn.clicked.connect(self.add_int_data)
+        self.integrals_tab.sort_hz_btn.clicked.connect(self.sort_int_on_hz)
+        self.integrals_tab.sort_cl_btn.clicked.connect(self.sort_int_on_cl)
+        self.integrals_tab.save_btn.clicked.connect(self.save_int_table_to_excel)
+        self.integrals_tab.draw_chart_btn.clicked.connect(self.draw_int_chart)
     
     def _create_status_bar(self) -> None:
         self.status_bar = QStatusBar()
@@ -495,7 +223,6 @@ class MainWindow(QMainWindow):
         self.status_bar.showMessage('Ready')
     
     def show_documentation(self) -> None:
-        import os
         base_dir = os.path.dirname(os.path.dirname(os.path.dirname(__file__)))
         doc_path = os.path.join(base_dir, 'docs', 'manual.html')
         if os.path.exists(doc_path):
@@ -563,8 +290,8 @@ class MainWindow(QMainWindow):
             self.update_tree()
             self.update_info()
             self.delete_file_btn.setEnabled(True)
-            if self.last_cycle_plot_data:
-                self._redraw_all_plots()
+            if self.last_cycle_tab.plot_data:
+                self.last_cycle_tab._redraw()
     
     def delete_file(self) -> None:
         current_row = self.files_list.currentRow()
@@ -625,89 +352,24 @@ class MainWindow(QMainWindow):
             dataset = item.text(0)
             
             if self.tab_widget.currentIndex() == 0:
-                self.plot_all_cycles(group, dataset)
+                self.all_cycles_tab.plot(group, dataset)
             elif self.tab_widget.currentIndex() == 1:
-                if (group, dataset) not in self.last_cycle_selected_items:
-                    self.last_cycle_selected_items.append((group, dataset))
-                    self.last_cycle_selected_list.addItem(f"{group}/{dataset}")
-                self.plot_btn.setEnabled(len(self.last_cycle_selected_items) > 0)
-                self.remove_selected_btn.setEnabled(len(self.last_cycle_selected_items) > 0)
-                self.total_clear_btn.setEnabled(True)
-                self.clear_selection_btn.setEnabled(len(self.last_cycle_selected_items) > 0)
-    
-    def plot_all_cycles(self, group: str, dataset: str) -> None:
-        if group in ['variables', 'currents', 'forces']:
-            time = self.h5_reader.read_dataset('time', '')
-            data = self.h5_reader.read_dataset(group, dataset)
-            
-            if time is not None and data is not None:
-                if self.single_mode_btn.isChecked():
-                    self.all_cycles_canvas.axes.clear()
-                    self.current_plot_data = {}
-                
-                filename = self.current_file.filename if self.current_file else 'unknown'
-                self.all_cycles_canvas.axes.plot(
-                    time, data, 
-                    label=f'{dataset} from {filename}'
-                )
-                
-                self.current_plot_data = {'time': time, 'data': data}
-                
-                self.all_cycles_canvas.axes.set_xlabel('msec')
-                self.all_cycles_canvas.axes.set_title(dataset)
-                self.all_cycles_canvas.axes.legend()
-                
-                if len(time) > 0:
-                    self.up_slider.setMaximum(int(np.max(time)))
-                    self.down_slider.setMaximum(int(np.max(time)))
-                    self.up_slider.setValue(0)
-                    self.down_slider.setValue(int(np.max(time)))
-                    self.up_slider_value.setText('0')
-                    self.down_slider_value.setText(str(int(np.max(time))))
-                
-                self.all_cycles_canvas.draw()
-    
-    def plot_last_cycle(self, group: str, dataset: str) -> None:
-        if not self.current_file:
-            return
-            
-        time = self.h5_reader.read_dataset('time', '')
-        cycle = self.current_file.cycle
-        points_mod = self.current_file.points_mod
-        
-        if time is not None and cycle is not None:
-            self.last_cycle_canvas.axes.clear()
-            
-            t_start = int(np.max(time) + 1 - cycle - points_mod)
-            t_end = int(np.max(time) + 1 - points_mod)
-            
-            data = self.h5_reader.read_dataset(group, dataset)
-            
-            if data is not None:
-                min_len = min(len(time), len(data))
-                t = time[t_start:t_start+min_len]
-                data_cycle = data[t_start:t_start+min_len]
-                t_shift = t - t[0]
-                
-                self.last_cycle_canvas.axes.plot(t_shift, data_cycle)
-                self.last_cycle_canvas.axes.set_xlabel('msec')
-                self.last_cycle_canvas.axes.set_title(dataset)
-                self.last_cycle_canvas.draw()
+                self.last_cycle_tab.add_selection(group, dataset)
     
     def set_single_mode(self) -> None:
-        self.single_mode_btn.setChecked(True)
-        self.multiple_mode_btn.setChecked(False)
+        self.all_cycles_tab.single_mode_btn.setChecked(True)
+        self.all_cycles_tab.multiple_mode_btn.setChecked(False)
     
     def set_multiple_mode(self) -> None:
-        self.single_mode_btn.setChecked(False)
-        self.multiple_mode_btn.setChecked(True)
+        self.all_cycles_tab.single_mode_btn.setChecked(False)
+        self.all_cycles_tab.multiple_mode_btn.setChecked(True)
     
     def toggle_stimuli(self) -> None:
-        if not self.current_file or not self.current_plot_data:
+        if not self.current_file or not self.all_cycles_tab.current_plot_data:
             return
         
-        time_data = self.current_plot_data.get('time')
-        data_data = self.current_plot_data.get('data')
+        time_data = self.all_cycles_tab.current_plot_data.get('time')
+        data_data = self.all_cycles_tab.current_plot_data.get('data')
         
         if time_data is None or data_data is None:
             return
@@ -719,12 +381,12 @@ class MainWindow(QMainWindow):
             return
         
         h_stimuli = None
-        for artist in self.all_cycles_canvas.axes.get_children():
+        for artist in self.all_cycles_tab.canvas.axes.get_children():
             if hasattr(artist, 'get_label') and artist.get_label() == 'Stimuli':
                 h_stimuli = artist
                 break
         
-        if self.show_stimuli_check.isChecked():
+        if self.all_cycles_tab.show_stimuli_check.isChecked():
             if not h_stimuli:
                 highlight_indices = []
                 count_cycle = self.current_file.count_cycle if self.current_file.count_cycle else 1
@@ -738,284 +400,16 @@ class MainWindow(QMainWindow):
                 if highlight_indices:
                     x_vals = time_data[highlight_indices]
                     y_vals = data_data[highlight_indices]
-                    self.all_cycles_canvas.axes.plot(
+                    self.all_cycles_tab.canvas.axes.plot(
                         x_vals, y_vals, '^r', markersize=8, 
                         markerfacecolor='r', label='Stimuli'
                     )
-                    self.all_cycles_canvas.draw()
+                    self.all_cycles_tab.canvas.draw()
         else:
             if h_stimuli:
                 h_stimuli.remove()
-                self.all_cycles_canvas.draw()
-    
-    def clear_all_cycles_chart(self) -> None:
-        self.all_cycles_canvas.axes.clear()
-        self.current_plot_data = {}
-        self.all_cycles_canvas.draw()
-    
-    def update_x_range(self) -> None:
-        if not self.current_plot_data:
-            return
-        
-        up_val = self.up_slider.value()
-        down_val = self.down_slider.value()
-        
-        self.up_slider_value.setText(str(up_val))
-        self.down_slider_value.setText(str(down_val))
-        
-        up_val, down_val = min(up_val, down_val), max(up_val, down_val)
-        
-        self.all_cycles_canvas.axes.set_xlim(up_val, down_val)
-        self.all_cycles_canvas.draw()
-    
-    def clear_last_cycle(self) -> None:
-        self.last_cycle_canvas.fig.clear()
-        self.last_cycle_canvas.axes = self.last_cycle_canvas.fig.add_subplot(111)
-        self.last_cycle_plots = []
-        self.last_cycle_selected_items = []
-        self.last_cycle_plot_data = []
-        self.last_cycle_cached_data = {}
-        self.last_cycle_ylims = [float('inf'), float('-inf')]
-        self.last_cycle_xlims = [0, 0]
-        self.last_cycle_page = 0
-        self.plot_btn.setEnabled(False)
-        self.total_clear_btn.setEnabled(False)
-        self.page_label.setText('1/1')
-        self.prev_page_btn.setEnabled(False)
-        self.next_page_btn.setEnabled(False)
-        self.last_cycle_canvas.draw()
-        self.last_cycle_selected_list.clear()
-        self.remove_selected_btn.setEnabled(False)
-        self.clear_selection_btn.setEnabled(False)
-    
-    def remove_selected_item(self) -> None:
-        current_row = self.last_cycle_selected_list.currentRow()
-        if current_row >= 0:
-            self.last_cycle_selected_items.pop(current_row)
-            self.last_cycle_selected_list.takeItem(current_row)
-            self.plot_btn.setEnabled(len(self.last_cycle_selected_items) > 0)
-            self.remove_selected_btn.setEnabled(self.last_cycle_selected_list.currentRow() >= 0)
-            self.clear_selection_btn.setEnabled(len(self.last_cycle_selected_items) > 0)
-    
-    def clear_selection(self) -> None:
-        self.last_cycle_selected_items = []
-        self.last_cycle_selected_list.clear()
-        self.plot_btn.setEnabled(False)
-        self.remove_selected_btn.setEnabled(False)
-        self.clear_selection_btn.setEnabled(False)
-    
-    def plot_selected(self) -> None:
-        if not self.current_file or not self.last_cycle_selected_items:
-            return
-        
-        time = self.h5_reader.read_dataset('time', '')
-        cycle = self.current_file.cycle
-        points_mod = self.current_file.points_mod
-        
-        if time is None or cycle is None:
-            return
-        
-        filename = self.current_file.filename
-        
-        new_items = [(g, d, filename) for g, d in self.last_cycle_selected_items]
-        
-        for item in new_items:
-            if item not in self.last_cycle_plot_data:
-                self.last_cycle_plot_data.append(item)
-        
-        if not hasattr(self, 'last_cycle_cached_data'):
-            self.last_cycle_cached_data = {}
-        
-        for item_group, item_dataset, item_filename in new_items:
-            if item_filename not in self.last_cycle_cached_data:
-                self.last_cycle_cached_data[item_filename] = {}
-            
-            cache_key = f"{item_group}_{item_dataset}"
-            
-            if cache_key not in self.last_cycle_cached_data[item_filename]:
-                data = self.h5_reader.read_dataset(item_group, item_dataset)
-                if data is not None:
-                    t_start = int(np.max(time) + 1 - cycle - points_mod)
-                    t_end = int(np.max(time) + 1 - points_mod)
-                    min_len = min(len(time), len(data), t_end + 1)
-                    data_cycle = data[t_start:t_start + min_len]
-                    self.last_cycle_cached_data[item_filename][cache_key] = data_cycle
-        
-        self._redraw_all_plots()
-    
-    def _redraw_all_plots(self) -> None:
-        if not self.last_cycle_plot_data:
-            return
-        
-        time = self.h5_reader.read_dataset('time', '')
-        cycle = self.current_file.cycle
-        points_mod = self.current_file.points_mod
-        
-        if time is None or cycle is None:
-            return
-        
-        unique_datasets = list(set((g, d) for g, d, _ in self.last_cycle_plot_data))
-        
-        total_pages = max(1, (len(unique_datasets) + self.last_cycle_per_page - 1) // self.last_cycle_per_page)
-        if self.last_cycle_page >= total_pages:
-            self.last_cycle_page = total_pages - 1
-        if self.last_cycle_page < 0:
-            self.last_cycle_page = 0
-        
-        self.page_label.setText(f"{self.last_cycle_page + 1}/{total_pages}")
-        self.prev_page_btn.setEnabled(self.last_cycle_page > 0)
-        self.next_page_btn.setEnabled(self.last_cycle_page < total_pages - 1)
-        
-        cols = 3
-        rows = 2
-        
-        start_idx = self.last_cycle_page * self.last_cycle_per_page
-        end_idx = min(start_idx + self.last_cycle_per_page, len(unique_datasets))
-        page_datasets = unique_datasets[start_idx:end_idx]
-        
-        self.last_cycle_canvas.fig.clear()
-        
-        all_filenames = list(set(f for _, _, f in self.last_cycle_plot_data))
-        
-        colors = ['blue', 'red', 'green', 'orange', 'purple', 'brown', 'pink', 'gray', 'cyan', 'magenta',
-                  'navy', 'maroon', 'olive', 'teal', 'silver', 'lime', 'aqua', 'fuchsia', 'yellow', 'black']
-        
-        file_colors = {}
-        for i, fn in enumerate(all_filenames):
-            file_colors[fn] = colors[i % len(colors)]
-        
-        lines = []
-        labels = []
-        
-        for idx, (group, dataset) in enumerate(page_datasets):
-            ax = self.last_cycle_canvas.fig.add_subplot(rows, cols, idx + 1)
-            
-            items_for_signal = [item for item in self.last_cycle_plot_data if item[0] == group and item[1] == dataset]
-            
-            for item_group, item_dataset, item_filename in items_for_signal:
-                cache_key = f"{item_group}_{item_dataset}"
-                data_cycle = self.last_cycle_cached_data.get(item_filename, {}).get(cache_key)
-                
-                if data_cycle is not None and len(data_cycle) > 0:
-                    t_start = int(np.max(time) + 1 - cycle - points_mod)
-                    min_len = min(len(time), len(data_cycle))
-                    t = time[t_start:t_start + min_len]
-                    t_shift = t - t[0] if len(t) > 0 else np.arange(len(data_cycle))
-                    
-                    color = file_colors.get(item_filename, 'blue')
-                    line, = ax.plot(t_shift, data_cycle[:len(t_shift)], color=color, label=item_filename)
-                    if item_filename not in labels:
-                        lines.append(line)
-                        labels.append(item_filename)
-            
-            ax.set_xlabel('msec')
-            ax.set_title(f'{dataset}')
-            ax.grid(True)
-        
-        if lines:
-            self.last_cycle_canvas.fig.legend(lines, labels, loc='upper right', bbox_to_anchor=(0.99, 0.99))
-        
-        self.last_cycle_canvas.fig.tight_layout(rect=(0, 0, 0.95, 0.95))
-        self.last_cycle_canvas.draw()
-    
-    def prev_last_cycle_page(self) -> None:
-        if self.last_cycle_page > 0:
-            self.last_cycle_page -= 1
-            self._redraw_all_plots()
-    
-    def next_last_cycle_page(self) -> None:
-        unique_datasets = list(set((g, d) for g, d, _ in self.last_cycle_plot_data))
-        total_pages = max(1, (len(unique_datasets) + self.last_cycle_per_page - 1) // self.last_cycle_per_page)
-        if self.last_cycle_page < total_pages - 1:
-            self.last_cycle_page += 1
-            self._redraw_all_plots()
-    
-    def redraw_last_cycle(self) -> None:
-        if not self.last_cycle_plot_data:
-            return
-        
-        current_filename = self.current_file.filename if self.current_file else ''
-        
-        time = self.h5_reader.read_dataset('time', '')
-        cycle = self.current_file.cycle
-        points_mod = self.current_file.points_mod
-        
-        if time is None or cycle is None:
-            return
-        
-        unique_datasets = list(set((g, d) for g, d, _ in self.last_cycle_plot_data))
-        
-        cols = 2
-        rows = (len(unique_datasets) + cols - 1) // cols
-        
-        self.last_cycle_canvas.fig.clear()
-        
-        colors = ['blue', 'red', 'green', 'orange', 'purple', 'brown', 'pink', 'gray', 'cyan', 'magenta']
-        
-        file_colors = {}
-        all_filenames = list(set(f for _, _, f in self.last_cycle_plot_data))
-        for i, fn in enumerate(all_filenames):
-            file_colors[fn] = colors[i % len(colors)]
-        
-        if not hasattr(self, 'last_cycle_cached_data'):
-            self.last_cycle_cached_data = {}
-        
-        plot_idx = 0
-        for group, dataset in unique_datasets:
-            ax = self.last_cycle_canvas.fig.add_subplot(rows, cols, plot_idx + 1)
-            
-            items_for_signal = [item for item in self.last_cycle_plot_data if item[0] == group and item[1] == dataset]
-            
-            for item_group, item_dataset, item_filename in items_for_signal:
-                if item_filename not in self.last_cycle_cached_data:
-                    self.last_cycle_cached_data[item_filename] = {}
-                
-                cache_key = f"{item_group}_{item_dataset}"
-                
-                if cache_key not in self.last_cycle_cached_data[item_filename]:
-                    found_file = None
-                    for f in self.files:
-                        if f.filename == item_filename:
-                            found_file = f
-                            break
-                    
-                    if found_file:
-                        old_current = self.current_file
-                        self.current_file = found_file
-                        self.h5_reader.current_file = found_file
-                        
-                        data = self.h5_reader.read_dataset(item_group, item_dataset)
-                        t_start = int(np.max(time) + 1 - cycle - points_mod)
-                        t_end = int(np.max(time) + 1 - points_mod)
-                        min_len = min(len(time), len(data), t_end + 1) if data is not None else 0
-                        data_cycle = data[t_start:t_start + min_len] if data is not None else None
-                        
-                        self.last_cycle_cached_data[item_filename][cache_key] = data_cycle
-                        
-                        self.current_file = old_current
-                        self.h5_reader.current_file = old_current
-                
-                data_cycle = self.last_cycle_cached_data[item_filename].get(cache_key)
-                
-                if data_cycle is not None and len(data_cycle) > 0:
-                    current_time = self.h5_reader.read_dataset('time', '')
-                    t_start = int(np.max(current_time) + 1 - cycle - points_mod)
-                    min_len = min(len(current_time), len(data_cycle))
-                    t = current_time[t_start:t_start + min_len]
-                    t_shift = t - t[0] if len(t) > 0 else np.arange(len(data_cycle))
-                    
-                    color = file_colors.get(item_filename, 'blue')
-                    ax.plot(t_shift, data_cycle[:len(t_shift)], color=color, label=item_filename)
-            
-            ax.set_xlabel('msec')
-            ax.set_title(f'{dataset}')
-            ax.legend()
-            ax.grid(True)
-            plot_idx += 1
-        
-        self.last_cycle_canvas.fig.tight_layout()
-        self.last_cycle_canvas.draw()
-    
+                self.all_cycles_tab.canvas.draw()
+
     def add_dep_data(self) -> None:
         if not self.current_file:
             QMessageBox.warning(self, 'Warning', 'No file selected')
@@ -1027,12 +421,14 @@ class MainWindow(QMainWindow):
         points_mod = self.current_file.points_mod
         Herz = self.current_file.Herz
         
-        if fname in self.dep_files:
+        tab = self.dependencies_tab
+        
+        if fname in tab.files:
             QMessageBox.warning(self, 'Existing Data', 'Data is already in the table')
             return
         
-        if not self.dep_characteristics:
-            self.dep_characteristics = [
+        if not tab.characteristics:
+            tab.characteristics = [
                 'Frequency (Hz)',
                 'Cycle length (ms)',
                 'Check point',
@@ -1105,13 +501,6 @@ class MainWindow(QMainWindow):
                 values['FXSE_min (AFU)'] = vars_f[10] if len(vars_f) > 10 else 0
                 values['FXSE_ampl (AFU)'] = ampl_f
                 values['tFXSE_max (ms)'] = tFmax
-                values['FXSE_D50 (ms)'] = 0
-                values['FXSE_D70 (ms)'] = 0
-                values['FXSE_D90 (ms)'] = 0
-                values['DF_max (AFU/ms)'] = 0
-                values['DF_max(norm) (1/ms)'] = 0
-                values['DF_min (AFU/ms)'] = 0
-                values['DF_min(norm) (1/ms)'] = 0
         except Exception as e:
             logger.warning(f"Failed to calculate FXSE characteristics: {e}")
 
@@ -1146,71 +535,40 @@ class MainWindow(QMainWindow):
         except Exception as e:
             logger.warning(f"Failed to calculate Cai characteristics: {e}")
 
-        self.dep_files.append(fname)
-        self.dep_data[fname] = values
+        tab.files.append(fname)
+        tab.data[fname] = values
         
-        self.update_dep_table()
-        
-        self.sort_dep_hz_btn.setEnabled(True)
-        self.sort_dep_cl_btn.setEnabled(True)
-        self.save_dep_table_btn.setEnabled(True)
-        self.draw_dep_chart_btn.setEnabled(True)
-        
-        char_items = self.dep_characteristics[3:]
-        self.char_dep_combo.clear()
-        self.char_dep_combo.addItems(char_items)
-        
-        x_items = self.dep_characteristics[:2]
-        self.x_axis_dep_combo.clear()
-        self.x_axis_dep_combo.addItems(x_items)
-        
-        self.new_dep_data_btn.setText('Add data')
+        tab.update_table()
+        tab.enable_controls()
         
         self.status_bar.showMessage(f'Added data for: {fname}')
     
-    def update_dep_table(self) -> None:
-        if not self.dep_data:
-            self.dep_table.setRowCount(0)
-            self.dep_table.setColumnCount(0)
-            return
-        
-        rows = len(self.dep_characteristics)
-        cols = len(self.dep_files) + 1
-        
-        self.dep_table.setRowCount(rows)
-        self.dep_table.setColumnCount(cols)
-        
-        self.dep_table.setHorizontalHeaderLabels(['Characteristics'] + self.dep_files)
-        
-        for i, char in enumerate(self.dep_characteristics):
-            self.dep_table.setItem(i, 0, QTableWidgetItem(char))
-            for j, fname in enumerate(self.dep_files):
-                val = self.dep_data[fname].get(char, '')
-                self.dep_table.setItem(i, j + 1, QTableWidgetItem(str(val)))
-    
     def sort_dep_on_hz(self) -> None:
-        if not self.dep_data:
+        tab = self.dependencies_tab
+        if not tab.data:
             return
         
-        sorted_files = sorted(self.dep_files, 
-                            key=lambda f: self.dep_data[f].get('Frequency (Hz)', 0))
-        self.dep_files = sorted_files
-        self.update_dep_table()
+        sorted_files = sorted(tab.files, 
+                            key=lambda f: tab.data[f].get('Frequency (Hz)', 0))
+        tab.files = sorted_files
+        tab.update_table()
         self.status_bar.showMessage('Sorted by Frequency (Hz)')
     
     def sort_dep_on_cl(self) -> None:
-        if not self.dep_data:
+        tab = self.dependencies_tab
+        if not tab.data:
             return
         
-        sorted_files = sorted(self.dep_files, 
-                            key=lambda f: self.dep_data[f].get('Cycle length (ms)', 0))
-        self.dep_files = sorted_files
-        self.update_dep_table()
+        sorted_files = sorted(tab.files, 
+                            key=lambda f: tab.data[f].get('Cycle length (ms)', 0))
+        tab.files = sorted_files
+        tab.update_table()
         self.status_bar.showMessage('Sorted by Cycle length (ms)')
     
     def draw_dep_chart(self) -> None:
-        x_axis = self.x_axis_dep_combo.currentText()
-        char = self.char_dep_combo.currentText()
+        tab = self.dependencies_tab
+        x_axis = tab.x_axis_combo.currentText()
+        char = tab.char_combo.currentText()
         
         if not x_axis or not char:
             return
@@ -1218,27 +576,28 @@ class MainWindow(QMainWindow):
         x_vals = []
         y_vals = []
         
-        for fname in self.dep_files:
-            x_val = self.dep_data[fname].get(x_axis, 0)
-            y_val = self.dep_data[fname].get(char, 0)
+        for fname in tab.files:
+            x_val = tab.data[fname].get(x_axis, 0)
+            y_val = tab.data[fname].get(char, 0)
             x_vals.append(x_val)
             y_vals.append(y_val)
         
         if not x_vals:
             return
         
-        self.dep_chart_canvas.axes.clear()
-        self.dep_chart_canvas.axes.plot(x_vals, y_vals, 'o-', markersize=8)
-        self.dep_chart_canvas.axes.set_xlabel(x_axis)
-        self.dep_chart_canvas.axes.set_ylabel(char)
-        self.dep_chart_canvas.axes.set_title(f'{char} vs {x_axis}')
-        self.dep_chart_canvas.axes.grid(True)
-        self.dep_chart_canvas.draw()
+        tab.canvas.axes.clear()
+        tab.canvas.axes.plot(x_vals, y_vals, 'o-', markersize=8)
+        tab.canvas.axes.set_xlabel(x_axis)
+        tab.canvas.axes.set_ylabel(char)
+        tab.canvas.axes.set_title(f'{char} vs {x_axis}')
+        tab.canvas.axes.grid(True)
+        tab.canvas.draw()
         
         self.status_bar.showMessage(f'Chart: {char} vs {x_axis}')
     
     def save_dep_table_to_excel(self) -> None:
-        if not self.dep_data:
+        tab = self.dependencies_tab
+        if not tab.data:
             return
         
         filepath, _ = QFileDialog.getSaveFileName(
@@ -1253,12 +612,12 @@ class MainWindow(QMainWindow):
         
         import pandas as pd
         
-        columns = ['Characteristics'] + self.dep_files
+        columns = ['Characteristics'] + tab.files
         data = []
-        for char in self.dep_characteristics:
+        for char in tab.characteristics:
             row = [char]
-            for fname in self.dep_files:
-                row.append(self.dep_data[fname].get(char, ''))
+            for fname in tab.files:
+                row.append(tab.data[fname].get(char, ''))
             data.append(row)
         
         df = pd.DataFrame(data, columns=columns)
@@ -1276,12 +635,14 @@ class MainWindow(QMainWindow):
         points_mod = self.current_file.points_mod
         Herz = self.current_file.Herz
         
-        if fname in self.int_files:
+        tab = self.integrals_tab
+        
+        if fname in tab.files:
             QMessageBox.warning(self, 'Existing Data', 'Data is already in the table')
             return
         
-        if not self.int_characteristics:
-            self.int_characteristics = [
+        if not tab.characteristics:
+            tab.characteristics = [
                 'Frequency (Hz)',
                 'Cycle length (ms)',
                 'Int{i_relSR} (mM)', 'Int{i_relcyt} (mM)', 'Int{i_relSS} (mM)',
@@ -1303,7 +664,6 @@ class MainWindow(QMainWindow):
         try:
             VjSR = float(self.current_file.fid['/parameters/V_jSR'][()]) if '/parameters/V_jSR' in self.current_file.fid else 0.01
             Vc = float(self.current_file.fid['/parameters/V_c'][()]) if '/parameters/V_c' in self.current_file.fid else 0.02
-            VnSR = float(self.current_file.fid['/parameters/V_nSR'][()]) if '/parameters/V_nSR' in self.current_file.fid else 0.005
             Vss = float(self.current_file.fid['/parameters/V_ss'][()]) if '/parameters/V_ss' in self.current_file.fid else 0.001
             FF = float(self.current_file.fid['/parameters/F'][()]) if '/parameters/F' in self.current_file.fid else 96485
             CC = float(self.current_file.fid['/parameters/Cm'][()]) if '/parameters/Cm' in self.current_file.fid else 1.0
@@ -1400,79 +760,48 @@ class MainWindow(QMainWindow):
             values['Int{Cain_total} (mM)'] = 0
             
         except Exception as e:
-            for char in self.int_characteristics[2:]:
+            for char in tab.characteristics[2:]:
                 if char not in values:
                     values[char] = 0
         
-        for char in self.int_characteristics:
+        for char in tab.characteristics:
             if char not in values:
                 values[char] = 0
         
-        self.int_files.append(fname)
-        self.int_data[fname] = values
+        tab.files.append(fname)
+        tab.data[fname] = values
         
-        self.update_int_table()
-        
-        self.sort_int_hz_btn.setEnabled(True)
-        self.sort_int_cl_btn.setEnabled(True)
-        self.save_int_table_btn.setEnabled(True)
-        self.draw_int_chart_btn.setEnabled(True)
-        
-        self.new_int_data_btn.setText('Add data')
-        
-        int_items = self.int_characteristics[2:]
-        self.integrals_combo.clear()
-        self.integrals_combo.addItems(int_items)
-        
-        x_items = self.int_characteristics[:2]
-        self.x_axis_int_combo.clear()
-        self.x_axis_int_combo.addItems(x_items)
+        tab.update_table()
+        tab.enable_controls()
         
         self.status_bar.showMessage(f'Added integrals for: {fname}')
     
-    def update_int_table(self) -> None:
-        if not self.int_data:
-            self.int_table.setRowCount(0)
-            self.int_table.setColumnCount(0)
-            return
-        
-        rows = len(self.int_characteristics)
-        cols = len(self.int_files) + 1
-        
-        self.int_table.setRowCount(rows)
-        self.int_table.setColumnCount(cols)
-        
-        self.int_table.setHorizontalHeaderLabels(['Integrals'] + self.int_files)
-        
-        for i, char in enumerate(self.int_characteristics):
-            self.int_table.setItem(i, 0, QTableWidgetItem(char))
-            for j, fname in enumerate(self.int_files):
-                val = self.int_data[fname].get(char, '')
-                self.int_table.setItem(i, j + 1, QTableWidgetItem(str(val)))
-    
     def sort_int_on_hz(self) -> None:
-        if not self.int_data:
+        tab = self.integrals_tab
+        if not tab.data:
             return
         
-        sorted_files = sorted(self.int_files, 
-                            key=lambda f: self.int_data[f].get('Frequency (Hz)', 0))
-        self.int_files = sorted_files
-        self.update_int_table()
+        sorted_files = sorted(tab.files, 
+                            key=lambda f: tab.data[f].get('Frequency (Hz)', 0))
+        tab.files = sorted_files
+        tab.update_table()
         self.status_bar.showMessage('Sorted by Frequency (Hz)')
     
     def sort_int_on_cl(self) -> None:
-        if not self.int_data:
+        tab = self.integrals_tab
+        if not tab.data:
             return
         
-        sorted_files = sorted(self.int_files, 
-                            key=lambda f: self.int_data[f].get('Cycle length (ms)', 0))
-        self.int_files = sorted_files
-        self.update_int_table()
+        sorted_files = sorted(tab.files, 
+                            key=lambda f: tab.data[f].get('Cycle length (ms)', 0))
+        tab.files = sorted_files
+        tab.update_table()
         self.status_bar.showMessage('Sorted by Cycle length (ms)')
     
     def draw_int_chart(self) -> None:
-        x_axis = self.x_axis_int_combo.currentText()
-        char = self.integrals_combo.currentText()
+        tab = self.integrals_tab
+        x_axis = tab.x_axis_combo.currentText()
+        char = tab.integrals_combo.currentText()
         
         if not x_axis or not char:
             return
@@ -1480,27 +809,28 @@ class MainWindow(QMainWindow):
         x_vals = []
         y_vals = []
         
-        for fname in self.int_files:
-            x_val = self.int_data[fname].get(x_axis, 0)
-            y_val = self.int_data[fname].get(char, 0)
+        for fname in tab.files:
+            x_val = tab.data[fname].get(x_axis, 0)
+            y_val = tab.data[fname].get(char, 0)
             x_vals.append(x_val)
             y_vals.append(y_val)
         
         if not x_vals:
             return
         
-        self.int_chart_canvas.axes.clear()
-        self.int_chart_canvas.axes.plot(x_vals, y_vals, 'o-', markersize=8)
-        self.int_chart_canvas.axes.set_xlabel(x_axis)
-        self.int_chart_canvas.axes.set_ylabel(char)
-        self.int_chart_canvas.axes.set_title(f'{char} vs {x_axis}')
-        self.int_chart_canvas.axes.grid(True)
-        self.int_chart_canvas.draw()
+        tab.canvas.axes.clear()
+        tab.canvas.axes.plot(x_vals, y_vals, 'o-', markersize=8)
+        tab.canvas.axes.set_xlabel(x_axis)
+        tab.canvas.axes.set_ylabel(char)
+        tab.canvas.axes.set_title(f'{char} vs {x_axis}')
+        tab.canvas.axes.grid(True)
+        tab.canvas.draw()
         
         self.status_bar.showMessage(f'Chart: {char} vs {x_axis}')
     
     def save_int_table_to_excel(self) -> None:
-        if not self.int_data:
+        tab = self.integrals_tab
+        if not tab.data:
             return
         
         filepath, _ = QFileDialog.getSaveFileName(
@@ -1515,12 +845,12 @@ class MainWindow(QMainWindow):
         
         import pandas as pd
         
-        columns = ['Integrals'] + self.int_files
+        columns = ['Integrals'] + tab.files
         data = []
-        for char in self.int_characteristics:
+        for char in tab.characteristics:
             row = [char]
-            for fname in self.int_files:
-                row.append(self.int_data[fname].get(char, ''))
+            for fname in tab.files:
+                row.append(tab.data[fname].get(char, ''))
             data.append(row)
         
         df = pd.DataFrame(data, columns=columns)
@@ -1570,31 +900,31 @@ class MainWindow(QMainWindow):
         if not self.current_file:
             QMessageBox.warning(self, 'Warning', 'No file selected')
             return
-        
+
         filepath, _ = QFileDialog.getSaveFileName(
             self, 'Save First Cycle', '', 'Excel Files (*.xlsx)'
         )
-        
+
         if not filepath:
             return
-        
+
         if not filepath.endswith('.xlsx'):
             filepath += '.xlsx'
-        
+
         time = self.h5_reader.read_dataset('time', '')
         cycle = self.current_file.cycle
-        
+
         if time is None or cycle is None:
             QMessageBox.warning(self, 'Error', 'No data')
             return
-        
+
         import pandas as pd
-        
+
         cycle_len = int(cycle) + 1
         t = time[:cycle_len]
-        
+
         data = {'time (ms)': t}
-        
+
         for group in self.current_file.groups:
             if group in self.current_file.datasets:
                 for dataset in self.current_file.datasets[group]:
@@ -1779,7 +1109,7 @@ class MainWindow(QMainWindow):
                 info.append(('Number of cycles', self.current_file.count_cycle))
             if self.current_file.Herz:
                 info.append(('Frequency (Hz)', self.current_file.Herz))
-             
+          
             if info:
                 df_info = pd.DataFrame(info, columns=['Parameter', 'Value'])
                 df_info.to_excel(writer, sheet_name='Info', index=False)

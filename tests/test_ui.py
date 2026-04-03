@@ -46,56 +46,56 @@ class TestMainWindow:
         assert main_window.tree_widget is not None
     
     def test_all_cycles_canvas_exists(self, main_window):
-        assert main_window.all_cycles_canvas is not None
-        assert main_window.all_cycles_canvas.fig is not None
-        assert main_window.all_cycles_canvas.axes is not None
+        assert main_window.all_cycles_tab.canvas is not None
+        assert main_window.all_cycles_tab.canvas.fig is not None
+        assert main_window.all_cycles_tab.canvas.axes is not None
     
     def test_last_cycle_canvas_exists(self, main_window):
-        assert main_window.last_cycle_canvas is not None
-        assert main_window.last_cycle_canvas.fig is not None
+        assert main_window.last_cycle_tab.canvas is not None
+        assert main_window.last_cycle_tab.canvas.fig is not None
     
     def test_dependencies_tab_widgets(self, main_window):
         main_window.tab_widget.setCurrentIndex(2)
-        assert main_window.dep_table is not None
-        assert main_window.dep_chart_canvas is not None
+        assert main_window.dependencies_tab.table is not None
+        assert main_window.dependencies_tab.canvas is not None
     
     def test_integrals_tab_widgets(self, main_window):
         main_window.tab_widget.setCurrentIndex(3)
-        assert main_window.int_table is not None
-        assert main_window.int_chart_canvas is not None
+        assert main_window.integrals_tab.table is not None
+        assert main_window.integrals_tab.canvas is not None
     
     def test_sliders_initial_state(self, main_window):
         main_window.tab_widget.setCurrentIndex(0)
-        assert main_window.up_slider.value() == 0
-        assert main_window.down_slider.value() == 100
+        assert main_window.all_cycles_tab.up_slider.value() == 0
+        assert main_window.all_cycles_tab.down_slider.value() == 100
     
     def test_last_cycle_selection_empty(self, main_window):
-        assert len(main_window.last_cycle_selected_items) == 0
-        assert main_window.plot_btn.isEnabled() == False
-        assert main_window.total_clear_btn.isEnabled() == False
+        assert len(main_window.last_cycle_tab.selected_items) == 0
+        assert main_window.last_cycle_tab.plot_btn.isEnabled() == False
+        assert main_window.last_cycle_tab.total_clear_btn.isEnabled() == False
     
     def test_dependencies_initial_state(self, main_window):
-        assert len(main_window.dep_data) == 0
-        assert main_window.sort_dep_hz_btn.isEnabled() == False
-        assert main_window.sort_dep_cl_btn.isEnabled() == False
-        assert main_window.draw_dep_chart_btn.isEnabled() == False
+        assert len(main_window.dependencies_tab.data) == 0
+        assert main_window.dependencies_tab.sort_hz_btn.isEnabled() == False
+        assert main_window.dependencies_tab.sort_cl_btn.isEnabled() == False
+        assert main_window.dependencies_tab.draw_chart_btn.isEnabled() == False
     
     def test_integrals_initial_state(self, main_window):
-        assert len(main_window.int_data) == 0
-        assert main_window.sort_int_hz_btn.isEnabled() == False
-        assert main_window.sort_int_cl_btn.isEnabled() == False
-        assert main_window.draw_int_chart_btn.isEnabled() == False
+        assert len(main_window.integrals_tab.data) == 0
+        assert main_window.integrals_tab.sort_hz_btn.isEnabled() == False
+        assert main_window.integrals_tab.sort_cl_btn.isEnabled() == False
+        assert main_window.integrals_tab.draw_chart_btn.isEnabled() == False
 
 
 class TestMatplotlibCanvas:
     def test_canvas_creation(self, qapp):
-        from src.ui.main_window import MatplotlibCanvas
+        from src.ui.tabs import MatplotlibCanvas
         canvas = MatplotlibCanvas()
         assert canvas.fig is not None
         assert canvas.axes is not None
     
     def test_canvas_with_parent(self, qapp):
-        from src.ui.main_window import MatplotlibCanvas
+        from src.ui.tabs import MatplotlibCanvas
         from PyQt6.QtWidgets import QWidget
         parent = QWidget()
         canvas = MatplotlibCanvas(parent, width=8, height=6, dpi=150)
@@ -109,49 +109,49 @@ class TestMainWindowIntegration:
             assert main_window.tab_widget.currentIndex() == i
     
     def test_single_mode_button(self, main_window):
-        main_window.single_mode_btn.click()
-        assert main_window.single_mode_btn.isChecked() == True
-        assert main_window.multiple_mode_btn.isChecked() == False
+        main_window.all_cycles_tab.single_mode_btn.click()
+        assert main_window.all_cycles_tab.single_mode_btn.isChecked() == True
+        assert main_window.all_cycles_tab.multiple_mode_btn.isChecked() == False
     
     def test_multiple_mode_button(self, main_window):
-        main_window.multiple_mode_btn.click()
-        assert main_window.multiple_mode_btn.isChecked() == True
-        assert main_window.single_mode_btn.isChecked() == False
+        main_window.all_cycles_tab.multiple_mode_btn.click()
+        assert main_window.all_cycles_tab.multiple_mode_btn.isChecked() == True
+        assert main_window.all_cycles_tab.single_mode_btn.isChecked() == False
     
     def test_mode_mutual_exclusion(self, main_window):
-        main_window.single_mode_btn.click()
-        assert main_window.single_mode_btn.isChecked() == True
-        main_window.multiple_mode_btn.click()
-        assert main_window.multiple_mode_btn.isChecked() == True
-        assert main_window.single_mode_btn.isChecked() == False
+        main_window.all_cycles_tab.single_mode_btn.click()
+        assert main_window.all_cycles_tab.single_mode_btn.isChecked() == True
+        main_window.all_cycles_tab.multiple_mode_btn.click()
+        assert main_window.all_cycles_tab.multiple_mode_btn.isChecked() == True
+        assert main_window.all_cycles_tab.single_mode_btn.isChecked() == False
     
     def test_show_stimuli_toggle(self, main_window):
-        main_window.show_stimuli_check.click()
-        assert main_window.show_stimuli_check.isChecked() == True
+        main_window.all_cycles_tab.show_stimuli_check.click()
+        assert main_window.all_cycles_tab.show_stimuli_check.isChecked() == True
     
     def test_clear_chart_button_exists(self, main_window):
-        assert main_window.clear_chart_btn is not None
-        assert main_window.clear_chart_btn.text() == 'Clear Chart'
+        assert main_window.all_cycles_tab.clear_chart_btn is not None
+        assert main_window.all_cycles_tab.clear_chart_btn.text() == 'Clear Chart'
     
     def test_slider_values(self, main_window):
-        main_window.up_slider.setValue(50)
-        main_window.down_slider.setValue(80)
-        assert main_window.up_slider.value() == 50
-        assert main_window.down_slider.value() == 80
+        main_window.all_cycles_tab.up_slider.setValue(50)
+        main_window.all_cycles_tab.down_slider.setValue(80)
+        assert main_window.all_cycles_tab.up_slider.value() == 50
+        assert main_window.all_cycles_tab.down_slider.value() == 80
     
     def test_slider_range(self, main_window):
-        assert main_window.up_slider.minimum() == 0
-        assert main_window.up_slider.maximum() == 100
-        assert main_window.down_slider.minimum() == 0
-        assert main_window.down_slider.maximum() == 100
+        assert main_window.all_cycles_tab.up_slider.minimum() == 0
+        assert main_window.all_cycles_tab.up_slider.maximum() == 100
+        assert main_window.all_cycles_tab.down_slider.minimum() == 0
+        assert main_window.all_cycles_tab.down_slider.maximum() == 100
     
     def test_comboboxes_exist(self, main_window):
         main_window.tab_widget.setCurrentIndex(2)
-        assert main_window.x_axis_dep_combo is not None
-        assert main_window.char_dep_combo is not None
+        assert main_window.dependencies_tab.x_axis_combo is not None
+        assert main_window.dependencies_tab.char_combo is not None
         main_window.tab_widget.setCurrentIndex(3)
-        assert main_window.x_axis_int_combo is not None
-        assert main_window.integrals_combo is not None
+        assert main_window.integrals_tab.x_axis_combo is not None
+        assert main_window.integrals_tab.integrals_combo is not None
     
     def test_tree_widget_columns(self, main_window):
         assert main_window.tree_widget.columnCount() == 1
@@ -188,8 +188,8 @@ class TestMainWindowWithFile:
     
     def test_plot_with_file(self, main_window, test_file):
         main_window.load_file(test_file)
-        main_window.plot_all_cycles('variables', 'V')
-        assert len(main_window.all_cycles_canvas.axes.lines) > 0
+        main_window.all_cycles_tab.plot('variables', 'V')
+        assert len(main_window.all_cycles_tab.canvas.axes.lines) > 0
     
     def test_delete_file_enables_button(self, main_window, test_file, qtbot):
         main_window.load_file(test_file)
@@ -224,26 +224,26 @@ class TestIntegralsTab:
     
     def test_integrals_tab_widgets_exist(self, main_window):
         main_window.tab_widget.setCurrentIndex(3)
-        assert main_window.int_table is not None
-        assert main_window.int_chart_canvas is not None
-        assert main_window.int_chart_toolbar is not None
+        assert main_window.integrals_tab.table is not None
+        assert main_window.integrals_tab.canvas is not None
+        assert main_window.integrals_tab.toolbar is not None
     
     def test_integrals_buttons_initially_disabled(self, main_window):
         main_window.tab_widget.setCurrentIndex(3)
-        assert main_window.sort_int_hz_btn.isEnabled() == False
-        assert main_window.sort_int_cl_btn.isEnabled() == False
-        assert main_window.save_int_table_btn.isEnabled() == False
-        assert main_window.draw_int_chart_btn.isEnabled() == False
+        assert main_window.integrals_tab.sort_hz_btn.isEnabled() == False
+        assert main_window.integrals_tab.sort_cl_btn.isEnabled() == False
+        assert main_window.integrals_tab.save_btn.isEnabled() == False
+        assert main_window.integrals_tab.draw_chart_btn.isEnabled() == False
     
     def test_integrals_new_data_button_exists(self, main_window):
         main_window.tab_widget.setCurrentIndex(3)
-        assert main_window.new_int_data_btn is not None
-        assert main_window.new_int_data_btn.text() in ['New Data', 'Add data']
+        assert main_window.integrals_tab.new_data_btn is not None
+        assert main_window.integrals_tab.new_data_btn.text() in ['New Data', 'Add data']
     
     def test_integrals_combos_exist(self, main_window):
         main_window.tab_widget.setCurrentIndex(3)
-        assert main_window.x_axis_int_combo is not None
-        assert main_window.integrals_combo is not None
+        assert main_window.integrals_tab.x_axis_combo is not None
+        assert main_window.integrals_tab.integrals_combo is not None
 
 
 class TestDependenciesTab:
@@ -253,47 +253,47 @@ class TestDependenciesTab:
     
     def test_dependencies_tab_widgets_exist(self, main_window):
         main_window.tab_widget.setCurrentIndex(2)
-        assert main_window.dep_table is not None
-        assert main_window.dep_chart_canvas is not None
-        assert main_window.dep_chart_toolbar is not None
+        assert main_window.dependencies_tab.table is not None
+        assert main_window.dependencies_tab.canvas is not None
+        assert main_window.dependencies_tab.toolbar is not None
     
     def test_dependencies_buttons_initially_disabled(self, main_window):
         main_window.tab_widget.setCurrentIndex(2)
-        assert main_window.sort_dep_hz_btn.isEnabled() == False
-        assert main_window.sort_dep_cl_btn.isEnabled() == False
-        assert main_window.save_dep_table_btn.isEnabled() == False
-        assert main_window.draw_dep_chart_btn.isEnabled() == False
+        assert main_window.dependencies_tab.sort_hz_btn.isEnabled() == False
+        assert main_window.dependencies_tab.sort_cl_btn.isEnabled() == False
+        assert main_window.dependencies_tab.save_btn.isEnabled() == False
+        assert main_window.dependencies_tab.draw_chart_btn.isEnabled() == False
     
     def test_dependencies_combos_exist(self, main_window):
         main_window.tab_widget.setCurrentIndex(2)
-        assert main_window.x_axis_dep_combo is not None
-        assert main_window.char_dep_combo is not None
+        assert main_window.dependencies_tab.x_axis_combo is not None
+        assert main_window.dependencies_tab.char_combo is not None
 
 
 class TestEdgeCases:
     def test_plot_without_file_creates_empty_plot(self, main_window):
-        main_window.plot_all_cycles('variables', 'V')
-        assert len(main_window.all_cycles_canvas.axes.lines) == 0
+        main_window.all_cycles_tab.plot('variables', 'V')
+        assert len(main_window.all_cycles_tab.canvas.axes.lines) == 0
     
     def test_delete_file_empty_list_no_error(self, main_window):
         main_window.delete_file()
         assert main_window.files == []
     
     def test_add_lines_no_selection(self, main_window):
-        main_window.plot_selected()
-        assert main_window.last_cycle_selected_items == []
+        main_window.last_cycle_tab.plot()
+        assert main_window.last_cycle_tab.selected_items == []
     
     def test_clear_chart_empty_plot(self, main_window):
-        main_window.clear_all_cycles_chart()
-        assert len(main_window.all_cycles_canvas.axes.lines) == 0
+        main_window.all_cycles_tab.clear_chart()
+        assert len(main_window.all_cycles_tab.canvas.axes.lines) == 0
     
     def test_update_x_range_no_data(self, main_window):
-        main_window.update_x_range()
-        assert main_window.up_slider.value() == 0
+        main_window.all_cycles_tab.update_x_range()
+        assert main_window.all_cycles_tab.up_slider.value() == 0
     
     def test_clear_selection_empty(self, main_window):
-        main_window.clear_selection()
-        assert main_window.last_cycle_selected_items == []
+        main_window.last_cycle_tab.clear_selection()
+        assert main_window.last_cycle_tab.selected_items == []
 
 
 class TestLastCycleTab:
@@ -303,21 +303,21 @@ class TestLastCycleTab:
     
     def test_last_cycle_tab_widgets_exist(self, main_window):
         main_window.tab_widget.setCurrentIndex(1)
-        assert main_window.last_cycle_canvas is not None
-        assert main_window.last_cycle_toolbar is not None
-        assert main_window.last_cycle_selected_list is not None
+        assert main_window.last_cycle_tab.canvas is not None
+        assert main_window.last_cycle_tab.toolbar is not None
+        assert main_window.last_cycle_tab.selected_list is not None
     
     def test_last_cycle_buttons_exist(self, main_window):
         main_window.tab_widget.setCurrentIndex(1)
-        assert main_window.plot_btn is not None
-        assert main_window.remove_selected_btn is not None
-        assert main_window.clear_selection_btn is not None
-        assert main_window.total_clear_btn is not None
+        assert main_window.last_cycle_tab.plot_btn is not None
+        assert main_window.last_cycle_tab.remove_selected_btn is not None
+        assert main_window.last_cycle_tab.clear_selection_btn is not None
+        assert main_window.last_cycle_tab.total_clear_btn is not None
     
     def test_last_cycle_buttons_initially_disabled(self, main_window):
         main_window.tab_widget.setCurrentIndex(1)
-        assert main_window.plot_btn.isEnabled() == False
-        assert main_window.total_clear_btn.isEnabled() == False
+        assert main_window.last_cycle_tab.plot_btn.isEnabled() == False
+        assert main_window.last_cycle_tab.total_clear_btn.isEnabled() == False
 
 
 class TestHelpMenu:

@@ -1,33 +1,59 @@
+"""
+SSH client module for H5 Reader.
+
+Provides SSH/SFTP connectivity for remote file access.
+"""
 from typing import Optional
 import paramiko
 import json
 import os
+import logging
 from PyQt6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QSpinBox, QCheckBox, QMessageBox
 
+logger = logging.getLogger(__name__)
 
 SETTINGS_FILE = os.path.expanduser('~/.h5reader_ssh_settings')
 
 
 def load_saved_settings() -> dict:
+    """
+    Load saved SSH settings from file.
+    
+    Returns:
+        Dict with saved settings or empty dict if not found.
+    """
     try:
         if os.path.exists(SETTINGS_FILE):
             with open(SETTINGS_FILE, 'r') as f:
                 return json.load(f)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"Could not load SSH settings: {e}")
     return {}
 
 
 def save_settings(settings: dict) -> None:
+    """
+    Save SSH settings to file.
+    
+    Args:
+        settings: Dict with settings to save.
+    """
     try:
         with open(SETTINGS_FILE, 'w') as f:
             json.dump(settings, f)
-    except Exception:
-        pass
+    except Exception as e:
+        logger.warning(f"Could not save SSH settings: {e}")
 
 
 class SSHConnection:
+    """
+    SSH/SFTP connection manager.
+    
+    Provides methods for connecting to SSH servers and transferring files.
+    """
+    
     def __init__(self):
+        """Initialize SSH connection with default values."""
         self.client: Optional[paramiko.SSHClient] = None
         self.sftp: Optional[paramiko.SFTPClient] = None
         self.host: str = ''
@@ -38,6 +64,20 @@ class SSHConnection:
         self.last_error: str = ''
     
     def connect(self, host: str, port: int, username: str, password: str, key_file: str = None, timeout: int = 30) -> bool:
+        """
+        Connect to SSH server.
+        
+        Args:
+            host: Server hostname or IP address
+            port: SSH port number
+            username: Username for authentication
+            password: Password for authentication
+            key_file: Optional path to private key file
+            timeout: Connection timeout in seconds
+        
+        Returns:
+            True if connection successful, False otherwise
+        """
         self.last_error = ''
         try:
             self.client = paramiko.SSHClient()
@@ -60,59 +100,98 @@ class SSHConnection:
             else:
                 connect_kwargs['password'] = password
             
-            print(f"Connecting to {host}:{port} as {username}...")
+            logger.info(f"Connecting to {host}:{port} as {username}...")
             self.client.connect(**connect_kwargs)
-            print("Connected, opening SFTP...")
+            logger.info("Connected, opening SFTP...")
             self.sftp = self.client.open_sftp()
             self.host = host
             self.port = port
             self.username = username
             self.password = password
             self.connected = True
-            print("SFTP session opened successfully")
+            logger.info("SFTP session opened successfully")
             return True
         except Exception as e:
             self.last_error = str(e)
-            print(f"SSH connection error: {self.last_error}")
+            logger.error(f"SSH connection error: {self.last_error}")
             return False
     
     def disconnect(self) -> None:
+        """Close SSH and SFTP connections."""
         try:
             if self.sftp:
                 self.sftp.close()
                 self.sftp = None
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Error closing SFTP: {e}")
         try:
             if self.client:
                 self.client.close()
                 self.client = None
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning(f"Error closing SSH client: {e}")
         self.connected = False
     
     def list_directory(self, path: str) -> list:
+        """
+        List directory contents.
+        
+        Args:
+            path: Directory path to list
+        
+        Returns:
+            List of filenames in directory, empty list if not connected
+        """
         if not self.connected or not self.sftp:
             return []
         try:
             return self.sftp.listdir(path)
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Could not list directory {path}: {e}")
             return []
     
     def list_directory_attr(self, path: str) -> list:
+        """
+        List directory contents with attributes.
+        
+        Args:
+            path: Directory path to list
+        
+        Returns:
+            List of SFTPAttributes, empty list if not connected
+        """
         if not self.connected or not self.sftp:
             return []
         try:
             return self.sftp.listdir_attr(path)
-        except Exception:
+        except Exception as e:
+            logger.warning(f"Could not list directory {path}: {e}")
             return []
     
     def is_connected(self) -> bool:
+        """
+        Check if connection is active.
+        
+        Returns:
+            True if connected, False otherwise
+        """
         return self.connected
 
 
 class SSHDialog(QDialog):
+    """
+    Dialog for SSH connection settings.
+    
+    Provides UI for entering host, port, credentials, and key file options.
+    """
+    
     def __init__(self, parent=None):
+        """
+        Initialize SSH connection dialog.
+        
+        Args:
+            parent: Parent widget
+        """
         super().__init__(parent)
         self.setWindowTitle('SSH Connection')
         self.setModal(True)
@@ -120,6 +199,7 @@ class SSHDialog(QDialog):
         self._load_saved_settings()
     
     def _load_saved_settings(self):
+        """Load and apply saved settings."""
         settings = load_saved_settings()
         if settings:
             self.host_input.setText(settings.get('host', ''))
@@ -132,6 +212,17 @@ class SSHDialog(QDialog):
                 self.pass_input.setText(settings.get('password', ''))
     
     def _save_settings(self, host: str, port: int, username: str, password: str, use_key: bool, key_file: str):
+        """
+        Save settings to file.
+        
+        Args:
+            host: Server hostname
+            port: SSH port
+            username: Username
+            password: Password
+            use_key: Whether to use key authentication
+            key_file: Path to key file
+        """
         settings = {
             'host': host,
             'port': port,
@@ -145,6 +236,7 @@ class SSHDialog(QDialog):
         save_settings(settings)
     
     def _setup_ui(self):
+        """Set up dialog UI components."""
         layout = QVBoxLayout(self)
         
         host_layout = QHBoxLayout()
@@ -202,10 +294,22 @@ class SSHDialog(QDialog):
         layout.addWidget(self.cancel_btn)
     
     def _on_key_toggled(self, checked: bool):
+        """
+        Handle key file checkbox toggle.
+        
+        Args:
+            checked: Whether checkbox is checked
+        """
         self.pass_input.setEnabled(not checked)
         self.key_input.setEnabled(checked)
     
     def get_connection_params(self) -> tuple:
+        """
+        Get connection parameters from dialog.
+        
+        Returns:
+            Tuple of (host, port, username, password, key_file)
+        """
         host = self.host_input.text()
         port = self.port_input.value()
         username = self.user_input.text()

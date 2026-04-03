@@ -2,6 +2,10 @@ from dataclasses import dataclass
 from typing import Dict, List, Optional
 import h5py
 import numpy as np
+import logging
+import os
+
+logger = logging.getLogger(__name__)
 
 
 @dataclass
@@ -29,8 +33,8 @@ class H5Reader:
         self.files: List[H5File] = []
     
     def open_file(self, filepath: str) -> H5File:
-        filename = filepath.split('/')[-1]
-        path = filepath[:len(filepath)-len(filename)]
+        filename = os.path.basename(filepath)
+        path = os.path.dirname(filepath) + os.sep
         
         fid = h5py.File(filepath, 'r')
         
@@ -70,19 +74,22 @@ class H5Reader:
     def _load_parameters(self, h5file: H5File):
         try:
             h5file.time = h5file.fid['/time'][:]
-        except:
+        except KeyError:
+            logger.warning("Could not load /time dataset")
             h5file.time = None
         
         try:
             val = h5file.fid['/parameters/stim_period'][()]
             h5file.cycle = float(val[0]) if val.ndim > 0 else float(val)
-        except:
+        except (KeyError, OSError):
+            logger.warning("Could not load stim_period parameter")
             h5file.cycle = None
             
         try:
             val = h5file.fid['/parameters/stim_start'][()]
             h5file.start_stim = float(val[0]) if val.ndim > 0 else float(val)
-        except:
+        except (KeyError, OSError):
+            logger.warning("Could not load stim_start parameter")
             h5file.start_stim = None
             
         if h5file.time is not None and h5file.cycle is not None:
@@ -96,7 +103,8 @@ class H5Reader:
         try:
             path = f'/{group}/{dataset}'
             return self.current_file.fid[path][:]
-        except:
+        except (KeyError, OSError) as e:
+            logger.warning(f"Could not read dataset {group}/{dataset}: {e}")
             return None
     
     def read_dataset_slice(self, group: str, dataset: str, start: int, count: int) -> Optional[np.ndarray]:
@@ -105,7 +113,8 @@ class H5Reader:
         try:
             path = f'/{group}/{dataset}'
             return self.current_file.fid[path][start:start+count]
-        except:
+        except (KeyError, OSError) as e:
+            logger.warning(f"Could not read slice from {group}/{dataset}: {e}")
             return None
     
     def close_file(self, h5file: H5File):
@@ -119,7 +128,7 @@ class H5Reader:
         for f in self.files:
             try:
                 f.fid.close()
-            except:
-                pass
+            except OSError as e:
+                logger.warning(f"Could not close file {f.filename}: {e}")
         self.files.clear()
         self.current_file = None
