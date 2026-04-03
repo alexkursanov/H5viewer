@@ -39,6 +39,7 @@ class MainWindow(QMainWindow):
         
         self.ssh_connection = SSHConnection()
         self.temp_dir = tempfile.mkdtemp()
+        self.download_dir: str = ''
         
         self.all_cycles_tab: Optional[AllCyclesTab] = None
         self.last_cycle_tab: Optional[LastCycleTab] = None
@@ -1206,7 +1207,7 @@ class MainWindow(QMainWindow):
     def ssh_connect(self) -> None:
         dialog = SSHDialog(self)
         if dialog.exec():
-            host, port, username, password, key_file = dialog.get_connection_params()
+            host, port, username, password, key_file, download_dir = dialog.get_connection_params()
             if not host or not username:
                 QMessageBox.warning(self, 'Error', 'Host and username are required')
                 return
@@ -1216,6 +1217,7 @@ class MainWindow(QMainWindow):
             result = self.ssh_connection.connect(host, port, username, password, key_file, timeout=15)
             
             if result:
+                self.download_dir = download_dir
                 self.status_bar.showMessage(f'Connected to {host} ({username}@{host}:{port})')
                 QMessageBox.information(self, 'Connected', f'Successfully connected to {host}')
             else:
@@ -1401,7 +1403,10 @@ class MainWindow(QMainWindow):
         
         remote_path = f"{current_path}/{filename}" if not current_path.endswith('/') else f"{current_path}{filename}"
         
-        local_path = os.path.join(self.temp_dir, filename)
+        if self.download_dir:
+            local_path = os.path.join(self.download_dir, filename)
+        else:
+            local_path = os.path.join(self.temp_dir, filename)
         
         self.status_bar.showMessage(f'Downloading {filename}...')
         dialog.close()

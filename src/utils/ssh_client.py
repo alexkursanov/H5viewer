@@ -8,11 +8,12 @@ import paramiko
 import json
 import os
 import logging
-from PyQt6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QSpinBox, QCheckBox, QMessageBox
+from PyQt6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit, QPushButton, QSpinBox, QCheckBox, QMessageBox, QFileDialog
 
 logger = logging.getLogger(__name__)
 
 SETTINGS_FILE = os.path.expanduser('~/.h5reader_ssh_settings')
+DEFAULT_DOWNLOAD_DIR = os.path.expanduser('~/Downloads')
 
 
 def load_saved_settings() -> dict:
@@ -28,7 +29,7 @@ def load_saved_settings() -> dict:
                 return json.load(f)
     except Exception as e:
         logger.warning(f"Could not load SSH settings: {e}")
-    return {}
+    return {'download_dir': DEFAULT_DOWNLOAD_DIR}
 
 
 def save_settings(settings: dict) -> None:
@@ -210,8 +211,18 @@ class SSHDialog(QDialog):
                 self.key_input.setText(settings.get('key_file', ''))
             else:
                 self.pass_input.setText(settings.get('password', ''))
+            self.download_dir_input.setText(settings.get('download_dir', DEFAULT_DOWNLOAD_DIR))
     
-    def _save_settings(self, host: str, port: int, username: str, password: str, use_key: bool, key_file: str):
+    def _on_browse_download(self):
+        """Open file dialog to select download directory."""
+        directory = QFileDialog.getExistingDirectory(
+            self, "Select Download Directory", 
+            self.download_dir_input.text() or DEFAULT_DOWNLOAD_DIR
+        )
+        if directory:
+            self.download_dir_input.setText(directory)
+    
+    def _save_settings(self, host: str, port: int, username: str, password: str, use_key: bool, key_file: str, download_dir: str):
         """
         Save settings to file.
         
@@ -222,12 +233,14 @@ class SSHDialog(QDialog):
             password: Password
             use_key: Whether to use key authentication
             key_file: Path to key file
+            download_dir: Download directory path
         """
         settings = {
             'host': host,
             'port': port,
             'username': username,
-            'use_key': use_key
+            'use_key': use_key,
+            'download_dir': download_dir
         }
         if use_key:
             settings['key_file'] = key_file
@@ -279,6 +292,16 @@ class SSHDialog(QDialog):
         key_layout.addWidget(self.key_input)
         layout.addLayout(key_layout)
         
+        download_layout = QHBoxLayout()
+        download_layout.addWidget(QLabel('Download dir:'))
+        self.download_dir_input = QLineEdit()
+        self.download_dir_input.setPlaceholderText(DEFAULT_DOWNLOAD_DIR)
+        download_layout.addWidget(self.download_dir_input)
+        self.browse_download_btn = QPushButton('Browse')
+        self.browse_download_btn.clicked.connect(self._on_browse_download)
+        download_layout.addWidget(self.browse_download_btn)
+        layout.addLayout(download_layout)
+        
         save_check_layout = QHBoxLayout()
         self.save_check = QCheckBox('Save settings')
         self.save_check.setChecked(True)
@@ -308,7 +331,7 @@ class SSHDialog(QDialog):
         Get connection parameters from dialog.
         
         Returns:
-            Tuple of (host, port, username, password, key_file)
+            Tuple of (host, port, username, password, key_file, download_dir)
         """
         host = self.host_input.text()
         port = self.port_input.value()
@@ -316,8 +339,9 @@ class SSHDialog(QDialog):
         use_key = self.key_check.isChecked()
         password = self.pass_input.text() if not use_key else ''
         key_file = self.key_input.text() if use_key else None
+        download_dir = self.download_dir_input.text() or DEFAULT_DOWNLOAD_DIR
         
         if self.save_check.isChecked():
-            self._save_settings(host, port, username, password, use_key, key_file if use_key else '')
+            self._save_settings(host, port, username, password, use_key, key_file if use_key else '', download_dir)
         
-        return (host, port, username, password, key_file)
+        return (host, port, username, password, key_file, download_dir)
